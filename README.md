@@ -1,5 +1,9 @@
 # JobJoy Report Review
 
+[![CI](https://github.com/PohTeyToe/jobjoy-report-review/actions/workflows/ci.yml/badge.svg)](https://github.com/PohTeyToe/jobjoy-report-review/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/PohTeyToe/jobjoy-report-review/actions/workflows/codeql.yml/badge.svg)](https://github.com/PohTeyToe/jobjoy-report-review/actions/workflows/codeql.yml)
+[![Claude Review](https://github.com/PohTeyToe/jobjoy-report-review/actions/workflows/claude-review.yml/badge.svg)](https://github.com/PohTeyToe/jobjoy-report-review/actions/workflows/claude-review.yml)
+
 Standalone pin-annotation webapp for reviewing the six JobJoy Sample 1 report design variants. Click anywhere on a page, drop a comment, everything lands in Supabase. Admin dashboard triages feedback.
 
 ## Stack
