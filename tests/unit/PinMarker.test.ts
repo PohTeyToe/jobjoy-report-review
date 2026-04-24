@@ -1,0 +1,33 @@
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { render, cleanup, fireEvent } from '@testing-library/svelte';
+import PinMarker from '../../src/lib/PinMarker.svelte';
+
+describe('PinMarker', () => {
+  afterEach(() => cleanup());
+
+  it('renders with the supplied numeric index', () => {
+    const { getByTestId } = render(PinMarker, {
+      props: { id: 'pin-1', index: 3 }
+    });
+    const btn = getByTestId('pin-marker');
+    expect(btn.textContent?.trim()).toBe('3');
+    expect(btn.getAttribute('data-pin-id')).toBe('pin-1');
+    expect(btn.getAttribute('aria-label')).toContain('Pin 3');
+  });
+
+  it('clicking dispatches onopen with the pin id', async () => {
+    const onopen = vi.fn();
+    const { getByTestId } = render(PinMarker, {
+      props: { id: 'pin-abc', index: 1, onopen }
+    });
+    await fireEvent.click(getByTestId('pin-marker'));
+    expect(onopen).toHaveBeenCalledWith('pin-abc');
+  });
+
+  it('marks optimistic state via data attribute', () => {
+    const { getByTestId } = render(PinMarker, {
+      props: { id: 'pin-2', index: 2, isOptimistic: true }
+    });
+    expect(getByTestId('pin-marker').getAttribute('data-optimistic')).toBe('true');
+  });
+});
