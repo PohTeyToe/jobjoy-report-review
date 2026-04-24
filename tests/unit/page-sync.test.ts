@@ -109,4 +109,20 @@ describe('scrollToPageIndex', () => {
     expect(landed).toBe(0);
     expect(scrolled).toBe(pages[0]);
   });
+
+  it('falls back to last page when requested data-page-index is missing', () => {
+    // Pages exist at data-page-index 0, 2, 5 (skipped indices). Requesting
+    // index 3 should not silently resolve to the positional 4th page — it
+    // should clamp to the last page (data-page-index=5).
+    const pages = buildPages(container, [
+      { top: 0, height: 100, index: 0 },
+      { top: 100, height: 100, index: 2 },
+      { top: 200, height: 100, index: 5 }
+    ]);
+    let scrolled: HTMLElement | null = null;
+    for (const p of pages) p.scrollIntoView = () => (scrolled = p);
+    const landed = scrollToPageIndex(document, 3);
+    expect(landed).toBe(pages.length - 1);
+    expect(scrolled).toBe(pages[pages.length - 1]);
+  });
 });

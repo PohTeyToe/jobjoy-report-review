@@ -30,11 +30,16 @@
   let shadow: ShadowRoot | null = null;
   let lastLoaded: VariantSlug | null = null;
   let clickHandler: ((ev: Event) => void) | null = null;
-  // Live reference to the current variant — used by the click handler so the
-  // emitted event carries the slug at click time, not the slug at mount time.
-  const currentVariant = $derived(variant);
+  // Monotonic counter used to cancel superseded mount() calls when the user
+  // switches variants faster than fetch/fonts.ready can resolve.
+  let mountGen = 0;
+
+  export function getShadow(): ShadowRoot | null {
+    return shadow;
+  }
 
   async function mount(slug: VariantSlug): Promise<void> {
+    const gen = ++mountGen;
     if (!host) return;
 
     // Attach (or re-attach) a CLOSED shadow root. attachShadow can only be
@@ -53,7 +58,9 @@
     if (!res.ok) {
       throw new Error(`Failed to fetch variant ${slug}: ${res.status}`);
     }
+    if (gen !== mountGen) return;
     const html = await res.text();
+    if (gen !== mountGen) return;
     const doc = new DOMParser().parseFromString(html, 'text/html');
 
     // Pull in <style> tags from <head> (and anywhere else).
@@ -95,7 +102,7 @@
       const attr = pageEl.getAttribute('data-page-index');
       const idx = attr === null ? 0 : Number.parseInt(attr, 10);
       onpageclick?.({
-        variant: currentVariant,
+        variant,
         page_index: Number.isFinite(idx) ? idx : 0,
         x_pct,
         y_pct
@@ -113,6 +120,7 @@
     } catch {
       // ignore — not all test envs implement document.fonts
     }
+    if (gen !== mountGen) return;
     onready?.();
   }
 
@@ -126,18 +134,18 @@
     // Re-run when host is bound or variant changes.
     const v = variant;
     if (host && v !== untrack(() => lastLoaded)) {
-      void mount(v);
+      mount(v).catch((err) => {
+        console.error('[VariantRenderer] mount failed:', err);
+      });
     }
   });
-
-  export function getShadowRootForTest(): ShadowRoot | null {
-    return shadow;
-  }
 </script>
 
 <div
   bind:this={host}
   data-testid="variant-host"
   data-variant={variant}
+  role="region"
+  aria-label={`Variant ${variant}`}
   style="display:block;width:100%;"
 ></div>

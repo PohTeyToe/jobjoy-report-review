@@ -15,8 +15,11 @@
   }
 
   function handleKey(e: KeyboardEvent): void {
-    // Ignore shortcuts when the user is typing in a field.
-    const t = e.target as HTMLElement | null;
+    // Ignore shortcuts when the user is typing in a field. composedPath()[0]
+    // unwraps events that originated inside a (closed) shadow root, which
+    // e.target retargets to the shadow host.
+    const real = e.composedPath()[0] as HTMLElement | null;
+    const t = real ?? (e.target as HTMLElement | null);
     if (t) {
       const tag = t.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || t.isContentEditable) return;
@@ -32,15 +35,11 @@
   }
 
   onMount(() => {
-    if (typeof window !== 'undefined') {
-      window.addEventListener('keydown', handleKey);
-    }
+    window.addEventListener('keydown', handleKey);
   });
 
   onDestroy(() => {
-    if (typeof window !== 'undefined') {
-      window.removeEventListener('keydown', handleKey);
-    }
+    window.removeEventListener('keydown', handleKey);
   });
 </script>
 
@@ -59,7 +58,8 @@
       title={`${v.title} — press ${i + 1}`}
       onclick={() => select(v.slug)}
     >
-      <span class="mr-1 text-xs opacity-60">{i + 1}.</span>{v.title}
+      <span class="mr-1 text-xs opacity-60" aria-hidden="true">{i + 1}.</span>{v.title}
+      <kbd class="sr-only">Keyboard shortcut {i + 1}</kbd>
     </button>
   {/each}
 </nav>

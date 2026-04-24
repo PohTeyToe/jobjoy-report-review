@@ -33,10 +33,18 @@ export function scrollToPageIndex(
 ): number {
   const pages = Array.from(root.querySelectorAll('.page')) as HTMLElement[];
   if (pages.length === 0) return 0;
-  const clamped = Math.min(Math.max(pageIndex, 0), pages.length - 1);
-  const target =
-    (pages.find((p) => p.getAttribute('data-page-index') === String(clamped)) as HTMLElement) ??
-    pages[clamped];
-  target.scrollIntoView({ block: 'start', behavior: 'auto' });
-  return clamped;
+  const requested = Math.max(pageIndex, 0);
+  // Look up by data-page-index (authoritative). If not found, fall back to
+  // the last page rather than positional index — positional fallback can
+  // silently scroll to the wrong page when variants renumber or skip pages.
+  const byAttr = pages.find((p) => p.getAttribute('data-page-index') === String(requested)) as
+    | HTMLElement
+    | undefined;
+  if (byAttr) {
+    byAttr.scrollIntoView({ block: 'start', behavior: 'auto' });
+    return requested;
+  }
+  const last = pages[pages.length - 1];
+  last.scrollIntoView({ block: 'start', behavior: 'auto' });
+  return pages.length - 1;
 }

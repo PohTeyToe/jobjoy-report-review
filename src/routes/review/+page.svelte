@@ -3,7 +3,7 @@
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
   import { VARIANTS, type VariantSlug } from '$lib/variants';
-  import VariantRenderer, { __testShadowRoots } from '$lib/VariantRenderer.svelte';
+  import VariantRenderer from '$lib/VariantRenderer.svelte';
   import VariantSwitcher from '$lib/VariantSwitcher.svelte';
   import { findClosestPageToCenter, scrollToPageIndex } from '$lib/page-sync';
 
@@ -22,15 +22,13 @@
 
   let variant: VariantSlug = $state(readVariant());
   let pageIdx: number = $state(readPage());
-  let host: HTMLElement | null = $state(null);
+  let renderer = $state<ReturnType<typeof VariantRenderer> | null>(null);
   let pendingPage: number | null = readPage();
   let suppressUrlWrite = false;
+  let skipNextReady = false;
 
   function getShadowRoot(): ShadowRoot | null {
-    if (!host) return null;
-    const inner = host.querySelector<HTMLElement>('[data-testid="variant-host"]');
-    if (!inner) return null;
-    return __testShadowRoots.get(inner) ?? null;
+    return renderer?.getShadow() ?? null;
   }
 
   function writeUrl(nextVariant: VariantSlug, nextPage: number): void {
@@ -59,6 +57,16 @@
   }
 
   function onRendererReady(): void {
+    if (skipNextReady) {
+      skipNextReady = false;
+      const root = getShadowRoot();
+      if (root && pendingPage !== null) {
+        scrollToPageIndex(root, pendingPage);
+        pageIdx = pendingPage;
+      }
+      pendingPage = null;
+      return;
+    }
     const root = getShadowRoot();
     if (root && pendingPage !== null) {
       const landed = scrollToPageIndex(root, pendingPage);
@@ -82,18 +90,21 @@
   // Back/forward should resync component state without writing a new URL.
   onMount(() => {
     const onPop = () => {
-      suppressUrlWrite = true;
       const v = readVariant();
       const p = readPage();
       if (v !== variant) {
+        // Variant change triggers an async re-mount; defer the "don't write
+        // URL" flag to onRendererReady via skipNextReady.
+        skipNextReady = true;
         pendingPage = p;
         variant = v;
       } else {
+        suppressUrlWrite = true;
         const root = getShadowRoot();
         if (root) scrollToPageIndex(root, p);
         pageIdx = p;
+        suppressUrlWrite = false;
       }
-      suppressUrlWrite = false;
     };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
@@ -108,7 +119,12 @@
     </div>
   </header>
 
-  <section class="mx-auto max-w-6xl px-0 py-4" bind:this={host}>
-    <VariantRenderer {variant} onready={onRendererReady} onpageclick={onPageClick} />
+  <section class="mx-auto max-w-6xl px-0 py-4">
+    <VariantRenderer
+      bind:this={renderer}
+      {variant}
+      onready={onRendererReady}
+      onpageclick={onPageClick}
+    />
   </section>
 </main>
