@@ -15,6 +15,21 @@ export type Pin = {
   isOptimistic?: boolean;
 };
 
+export type ThreadComment = {
+  id: string;
+  pin_id: string;
+  reviewer_id: string;
+  reviewer_name?: string;
+  body: string;
+  created_at: string;
+  isOptimistic?: boolean;
+};
+
+export type Thread = {
+  pin: Pin;
+  comments: ThreadComment[];
+};
+
 export type DropPinInput = {
   variant: VariantSlug;
   page_index: number;
@@ -68,6 +83,7 @@ export class PinStore {
   pins = $state<Pin[]>([]);
   failed = $state<FailedDrop[]>([]);
   loading = $state(false);
+  activeThread = $state<Thread | null>(null);
   private activeVariant: VariantSlug | null = null;
 
   async loadPins(variant: VariantSlug): Promise<void> {
@@ -206,9 +222,242 @@ export class PinStore {
     }
   }
 
+  /**
+   * Fetch a single pin + its comments + reviewer names. Sets `activeThread`
+   * to the result and also returns it so callers can branch on it.
+   */
+  async loadThread(pinId: string): Promise<Thread | null> {
+    const { data, error } = await supabase
+      .from('pins')
+      .select(
+        `id, variant, page_index, x_pct, y_pct, reviewer_id, resolved_at, created_at,
+         reviewers ( name ),
+         comments ( id, pin_id, reviewer_id, body, created_at,
+                    reviewers ( name ) )`
+      )
+      .eq('id', pinId)
+      .order('created_at', { ascending: true, foreignTable: 'comments' })
+      .single();
+
+    if (error || !data) {
+      console.error('[pin-store] loadThread failed:', error);
+      this.activeThread = null;
+      return null;
+    }
+
+    type ThreadCommentRow = {
+      id: string;
+      pin_id: string;
+      reviewer_id: string;
+      body: string;
+      created_at: string;
+      reviewers?: { name?: string } | null;
+    };
+    const row = data as Omit<PinRow, 'comments'> & {
+      comments?: ThreadCommentRow[] | null;
+    };
+
+    const pin: Pin = {
+      id: row.id,
+      variant: row.variant,
+      page_index: row.page_index,
+      x_pct: row.x_pct,
+      y_pct: row.y_pct,
+      reviewer_id: row.reviewer_id,
+      reviewer_name: row.reviewers?.name,
+      resolved_at: row.resolved_at,
+      created_at: row.created_at
+    };
+
+    const comments: ThreadComment[] = (row.comments ?? [])
+      .slice()
+      .sort((a, b) => a.created_at.localeCompare(b.created_at))
+      .map((c) => ({
+        id: c.id,
+        pin_id: c.pin_id,
+        reviewer_id: c.reviewer_id,
+        reviewer_name: c.reviewers?.name,
+        body: c.body,
+        created_at: c.created_at
+      }));
+
+    const thread: Thread = { pin, comments };
+    this.activeThread = thread;
+    return thread;
+  }
+
+  /**
+   * Optimistically append a reply, then persist. On the active thread only.
+   * If the thread is closed before the network round-trip resolves, the
+   * server-side row will surface via the realtime subscription instead.
+   */
+  async addComment(
+    pinId: string,
+    body: string,
+    reviewer: { id: string; name: string }
+  ): Promise<void> {
+    const trimmed = body.trim();
+    if (!trimmed) return;
+
+    const tempId = genTempId();
+    const optimistic: ThreadComment = {
+      id: tempId,
+      pin_id: pinId,
+      reviewer_id: reviewer.id,
+      reviewer_name: reviewer.name,
+      body: trimmed,
+      created_at: isoNow(),
+      isOptimistic: true
+    };
+
+    if (this.activeThread && this.activeThread.pin.id === pinId) {
+      this.activeThread = {
+        ...this.activeThread,
+        comments: [...this.activeThread.comments, optimistic]
+      };
+    }
+
+    const { data, error } = await supabase
+      .from('comments')
+      .insert({ pin_id: pinId, reviewer_id: reviewer.id, body: trimmed })
+      .select('id, pin_id, reviewer_id, body, created_at')
+      .single();
+
+    if (error || !data) {
+      // Rollback the optimistic comment.
+      if (this.activeThread && this.activeThread.pin.id === pinId) {
+        this.activeThread = {
+          ...this.activeThread,
+          comments: this.activeThread.comments.filter((c) => c.id !== tempId)
+        };
+      }
+      throw new Error(error?.message ?? 'comment insert failed');
+    }
+
+    if (this.activeThread && this.activeThread.pin.id === pinId) {
+      this.activeThread = {
+        ...this.activeThread,
+        comments: this.activeThread.comments.map((c) =>
+          c.id === tempId
+            ? {
+                ...c,
+                id: (data as { id: string }).id,
+                created_at: (data as { created_at: string }).created_at,
+                isOptimistic: false
+              }
+            : c
+        )
+      };
+    }
+  }
+
+  /**
+   * Toggle pins.resolved_at between now() and null. Updates both the pin in
+   * the variant list and (if open) the active thread, so the UI flips
+   * synchronously without waiting for realtime.
+   */
+  async toggleResolved(pinId: string): Promise<void> {
+    const current = this.pins.find((p) => p.id === pinId) ?? this.activeThread?.pin ?? null;
+    if (!current) return;
+
+    const nextResolved = current.resolved_at ? null : isoNow();
+
+    // Optimistic UI flip first.
+    this.pins = this.pins.map((p) => (p.id === pinId ? { ...p, resolved_at: nextResolved } : p));
+    if (this.activeThread && this.activeThread.pin.id === pinId) {
+      this.activeThread = {
+        ...this.activeThread,
+        pin: { ...this.activeThread.pin, resolved_at: nextResolved }
+      };
+    }
+
+    const { error } = await supabase
+      .from('pins')
+      .update({ resolved_at: nextResolved })
+      .eq('id', pinId);
+
+    if (error) {
+      // Roll back.
+      this.pins = this.pins.map((p) =>
+        p.id === pinId ? { ...p, resolved_at: current.resolved_at } : p
+      );
+      if (this.activeThread && this.activeThread.pin.id === pinId) {
+        this.activeThread = {
+          ...this.activeThread,
+          pin: { ...this.activeThread.pin, resolved_at: current.resolved_at }
+        };
+      }
+      throw new Error(error.message ?? 'resolve toggle failed');
+    }
+  }
+
+  /**
+   * Apply a realtime pin event to the local list. Idempotent: an INSERT for
+   * a pin that already exists (because our optimistic write echoed back) is
+   * a no-op.
+   */
+  applyRealtimePin(type: 'INSERT' | 'UPDATE' | 'DELETE', row: { id: string } & Partial<Pin>): void {
+    if (type === 'DELETE') {
+      this.pins = this.pins.filter((p) => p.id !== row.id);
+      return;
+    }
+    const existing = this.pins.find((p) => p.id === row.id);
+    if (existing) {
+      this.pins = this.pins.map((p) =>
+        p.id === row.id ? { ...p, ...row, isOptimistic: false } : p
+      );
+      if (this.activeThread && this.activeThread.pin.id === row.id) {
+        this.activeThread = {
+          ...this.activeThread,
+          pin: { ...this.activeThread.pin, ...row }
+        };
+      }
+      return;
+    }
+    if (type === 'INSERT' && row.variant && row.variant === this.activeVariant) {
+      // Build a Pin from the partial row. reviewer_name will fill in on the
+      // next loadPins; for the realtime echo we accept the missing label.
+      const pin: Pin = {
+        id: row.id,
+        variant: row.variant as VariantSlug,
+        page_index: row.page_index ?? 0,
+        x_pct: row.x_pct ?? 0,
+        y_pct: row.y_pct ?? 0,
+        reviewer_id: row.reviewer_id ?? '',
+        resolved_at: row.resolved_at ?? null,
+        created_at: row.created_at ?? isoNow()
+      };
+      this.pins = [...this.pins, pin];
+    }
+  }
+
+  /** Append a realtime comment to the active thread, dedup by id. */
+  applyRealtimeComment(comment: ThreadComment): void {
+    if (!this.activeThread || this.activeThread.pin.id !== comment.pin_id) return;
+    if (this.activeThread.comments.some((c) => c.id === comment.id)) return;
+    this.activeThread = {
+      ...this.activeThread,
+      comments: [...this.activeThread.comments, comment]
+    };
+  }
+
+  clearThread(): void {
+    this.activeThread = null;
+  }
+
   /** Test-only: replace the pin list directly. */
   __setPinsForTests(pins: Pin[]): void {
     this.pins = pins;
+  }
+
+  /** Test-only: set active variant without a network call. */
+  __setActiveVariantForTests(variant: VariantSlug | null): void {
+    this.activeVariant = variant;
+  }
+
+  /** Test-only: set active thread directly. */
+  __setActiveThreadForTests(thread: Thread | null): void {
+    this.activeThread = thread;
   }
 }
 

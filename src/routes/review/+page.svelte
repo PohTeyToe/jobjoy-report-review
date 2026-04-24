@@ -8,9 +8,11 @@
   import PinOverlay from '$lib/PinOverlay.svelte';
   import PinComposer from '$lib/PinComposer.svelte';
   import NameModal from '$lib/NameModal.svelte';
+  import ThreadPanel from '$lib/ThreadPanel.svelte';
   import { findClosestPageToCenter, scrollToPageIndex } from '$lib/page-sync';
   import { getIdentity, bumpLastSeen, type Identity } from '$lib/identity';
   import { createPinStore } from '$lib/pin-store.svelte';
+  import { subscribePinsForVariant } from '$lib/realtime';
 
   const SLUGS = VARIANTS.map((v) => v.slug);
 
@@ -47,6 +49,49 @@
   let pending = $state<PendingDrop | null>(null);
 
   let shadowRoot = $state<ShadowRoot | null>(null);
+  let openPinId = $state<string | null>(null);
+  let pinsUnsubscribe: (() => void) | null = null;
+
+  function readPinParam(): string | null {
+    return page.url.searchParams.get('pin');
+  }
+
+  function setPinUrl(next: string | null): void {
+    if (suppressUrlWrite) return;
+    const url = new URL(page.url);
+    if (next) url.searchParams.set('pin', next);
+    else url.searchParams.delete('pin');
+    void goto(`${url.pathname}${url.search}`, {
+      replaceState: true,
+      noScroll: true,
+      keepFocus: true
+    });
+  }
+
+  function openThread(id: string): void {
+    openPinId = id;
+    setPinUrl(id);
+  }
+
+  function closeThread(): void {
+    openPinId = null;
+    setPinUrl(null);
+  }
+
+  function startPinsRealtime(slug: VariantSlug): void {
+    if (pinsUnsubscribe) {
+      pinsUnsubscribe();
+      pinsUnsubscribe = null;
+    }
+    pinsUnsubscribe = subscribePinsForVariant(slug, (ev) => {
+      if (ev.type === 'DELETE') {
+        pinStore.applyRealtimePin('DELETE', { id: (ev.old.id as string) ?? '' });
+        if (openPinId && ev.old.id === openPinId) closeThread();
+        return;
+      }
+      pinStore.applyRealtimePin(ev.type, ev.new);
+    });
+  }
 
   function getShadowRoot(): ShadowRoot | null {
     return renderer?.getShadow() ?? null;
@@ -79,7 +124,9 @@
     variant = slug;
     pending = null;
     writeUrl(slug, pendingPage ?? 0);
+    if (openPinId) closeThread();
     void pinStore.loadPins(slug);
+    startPinsRealtime(slug);
   }
 
   function onRendererReady(): void {
@@ -181,6 +228,12 @@
       needsName = true;
     }
 
+    // Deep-link: ?pin=<id> opens the thread on mount.
+    const linkedPin = readPinParam();
+    if (linkedPin) openPinId = linkedPin;
+
+    startPinsRealtime(variant);
+
     const onPop = () => {
       const v = readVariant();
       const p = readPage();
@@ -189,6 +242,7 @@
         pendingPage = p;
         variant = v;
         void pinStore.loadPins(v);
+        startPinsRealtime(v);
       } else {
         suppressUrlWrite = true;
         const root = getShadowRoot();
@@ -196,9 +250,16 @@
         pageIdx = p;
         suppressUrlWrite = false;
       }
+      // Sync pin param on back/forward.
+      const linked = readPinParam();
+      if (linked !== openPinId) openPinId = linked;
     };
     window.addEventListener('popstate', onPop);
-    return () => window.removeEventListener('popstate', onPop);
+    return () => {
+      window.removeEventListener('popstate', onPop);
+      if (pinsUnsubscribe) pinsUnsubscribe();
+      pinsUnsubscribe = null;
+    };
   });
 </script>
 
@@ -224,7 +285,9 @@
     />
   </section>
 
-  <PinOverlay pins={pinStore.pins} {shadowRoot} />
+  <PinOverlay pins={pinStore.pins} {shadowRoot} onopen={openThread} />
+
+  <ThreadPanel pinId={openPinId} store={pinStore} {identity} onclose={closeThread} />
 
   {#if pending}
     <PinComposer
