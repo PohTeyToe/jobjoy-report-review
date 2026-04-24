@@ -71,7 +71,11 @@ export function subscribePinsForVariant(
       { event: 'DELETE', schema, table: 'pins', filter },
       (payload: { old: Partial<PinRow> }) => onChange({ type: 'DELETE', old: payload.old })
     )
-    .subscribe();
+    .subscribe((status) => {
+      if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        console.error('[realtime] channel error:', status);
+      }
+    });
 
   return () => {
     void supabase.removeChannel(channel);
@@ -100,7 +104,11 @@ export function subscribeCommentsForThread(
       },
       (payload: { new: CommentRow }) => onChange({ type: 'INSERT', new: payload.new })
     )
-    .subscribe();
+    .subscribe((status) => {
+      if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        console.error('[realtime] channel error:', status);
+      }
+    });
 
   return () => {
     void supabase.removeChannel(channel);

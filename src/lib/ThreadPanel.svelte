@@ -19,33 +19,32 @@
   let posting = $state(false);
   let resolving = $state(false);
   let loadError = $state<string | null>(null);
-  let unsubscribe: (() => void) | null = null;
 
   // Pin-id-driven loading. When pinId changes (open a different thread, or
   // close → null), tear down the previous subscription and reload.
   $effect(() => {
     const id = pinId;
-    // Always tear down previous subscription before reacting.
-    if (unsubscribe) {
-      unsubscribe();
-      unsubscribe = null;
-    }
+    let localUnsub: (() => void) | null = null;
+    let cancelled = false;
+
     if (!id) {
       store.clearThread();
       return;
     }
     loadError = null;
+
     void (async () => {
       const thread = await store.loadThread(id);
-      if (!thread) {
-        loadError = 'Could not load this thread.';
+      if (cancelled || !thread) {
+        if (!cancelled) loadError = 'Could not load this thread.';
         return;
       }
-      // Focus the reply box once the panel content is mounted.
       await tick();
+      if (cancelled) return;
       textareaEl?.focus();
-      // Subscribe AFTER initial load so the first batch isn't double-applied.
-      unsubscribe = subscribeCommentsForThread(id, (ev) => {
+      // Note: realtime CommentRow lacks reviewer_name — live-inserted comments
+      // from other reviewers show '—' until a page reload triggers the JOIN.
+      localUnsub = subscribeCommentsForThread(id, (ev) => {
         if (ev.type !== 'INSERT') return;
         const row = ev.new as CommentRow;
         store.applyRealtimeComment({
@@ -57,31 +56,20 @@
         });
       });
     })();
+
+    return () => {
+      cancelled = true;
+      localUnsub?.();
+    };
   });
 
   function handleKeydown(e: KeyboardEvent): void {
+    if (!pinId) return;
     if (e.key === 'Escape') {
       e.preventDefault();
       e.stopPropagation();
       onclose();
       return;
-    }
-    if (e.key !== 'Tab') return;
-    // Trap Tab inside the panel.
-    const root = containerEl;
-    if (!root) return;
-    const focusable = root.querySelectorAll<HTMLElement>(
-      'button, textarea, [href], input, select, [tabindex]:not([tabindex="-1"])'
-    );
-    if (focusable.length === 0) return;
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    if (e.shiftKey && document.activeElement === first) {
-      e.preventDefault();
-      last.focus();
-    } else if (!e.shiftKey && document.activeElement === last) {
-      e.preventDefault();
-      first.focus();
     }
   }
 
@@ -90,8 +78,6 @@
   });
   onDestroy(() => {
     document.removeEventListener('keydown', handleKeydown);
-    if (unsubscribe) unsubscribe();
-    unsubscribe = null;
   });
 
   async function postReply(): Promise<void> {

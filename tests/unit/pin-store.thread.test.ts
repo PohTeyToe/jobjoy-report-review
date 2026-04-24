@@ -58,7 +58,7 @@ describe('pin-store thread/resolve', () => {
     pinUpdateEq.mockReset();
   });
 
-  it('loadThread returns pin + sorted comments + reviewer names', async () => {
+  it('loadThread returns pin + comments (server-ordered) + reviewer names', async () => {
     pinSelectSingle.mockResolvedValueOnce({
       data: {
         id: 'pin-1',
@@ -72,20 +72,20 @@ describe('pin-store thread/resolve', () => {
         reviewers: { name: 'Alice' },
         comments: [
           {
-            id: 'c2',
-            pin_id: 'pin-1',
-            reviewer_id: 'rev-2',
-            body: 'second',
-            created_at: '2026-04-24T01:00:00Z',
-            reviewers: { name: 'Bob' }
-          },
-          {
             id: 'c1',
             pin_id: 'pin-1',
             reviewer_id: 'rev-1',
             body: 'first',
             created_at: '2026-04-24T00:30:00Z',
             reviewers: { name: 'Alice' }
+          },
+          {
+            id: 'c2',
+            pin_id: 'pin-1',
+            reviewer_id: 'rev-2',
+            body: 'second',
+            created_at: '2026-04-24T01:00:00Z',
+            reviewers: { name: 'Bob' }
           }
         ]
       },

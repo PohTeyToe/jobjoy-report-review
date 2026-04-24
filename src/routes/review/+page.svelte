@@ -85,8 +85,10 @@
     }
     pinsUnsubscribe = subscribePinsForVariant(slug, (ev) => {
       if (ev.type === 'DELETE') {
-        pinStore.applyRealtimePin('DELETE', { id: (ev.old.id as string) ?? '' });
-        if (openPinId && ev.old.id === openPinId) closeThread();
+        const deletedId = ev.old.id;
+        if (!deletedId) return;
+        pinStore.applyRealtimePin('DELETE', { id: deletedId });
+        if (openPinId && deletedId === openPinId) closeThread();
         return;
       }
       pinStore.applyRealtimePin(ev.type, ev.new);

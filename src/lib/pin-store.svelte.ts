@@ -269,17 +269,14 @@ export class PinStore {
       created_at: row.created_at
     };
 
-    const comments: ThreadComment[] = (row.comments ?? [])
-      .slice()
-      .sort((a, b) => a.created_at.localeCompare(b.created_at))
-      .map((c) => ({
-        id: c.id,
-        pin_id: c.pin_id,
-        reviewer_id: c.reviewer_id,
-        reviewer_name: c.reviewers?.name,
-        body: c.body,
-        created_at: c.created_at
-      }));
+    const comments: ThreadComment[] = (row.comments ?? []).map((c) => ({
+      id: c.id,
+      pin_id: c.pin_id,
+      reviewer_id: c.reviewer_id,
+      reviewer_name: c.reviewers?.name,
+      body: c.body,
+      created_at: c.created_at
+    }));
 
     const thread: Thread = { pin, comments };
     this.activeThread = thread;
