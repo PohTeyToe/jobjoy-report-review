@@ -49,6 +49,7 @@ interface PinJoinRow {
     body: string;
     created_at: string;
     reviewer_id: string;
+    reviewers?: { name?: string } | null;
   }> | null;
 }
 
@@ -91,39 +92,25 @@ export class AdminStore {
           .order('created_at', { ascending: false })
       ]);
 
-      if (pinsRes.error) {
-        this.loadError = pinsRes.error.message;
-      }
-      if (picksRes.error) {
-        this.loadError = (this.loadError ?? '') + ' ' + picksRes.error.message;
-      }
+      const errors = [pinsRes.error?.message, picksRes.error?.message].filter(Boolean);
+      if (errors.length) this.loadError = errors.join('; ');
 
-      const pinRows: PinJoinRow[] = (pinsRes.data ?? []) as unknown as PinJoinRow[];
-      const pickRows: PickJoinRow[] = (picksRes.data ?? []) as unknown as PickJoinRow[];
+      const pinRows: PinJoinRow[] = (pinsRes.data ?? []) as PinJoinRow[];
+      const pickRows: PickJoinRow[] = (picksRes.data ?? []) as PickJoinRow[];
 
       const commentsByPin: Record<string, AdminThreadComment[]> = {};
       const pins: AdminPin[] = pinRows.map((r) => {
         const cs = (r.comments ?? [])
           .slice()
           .sort((a, b) => a.created_at.localeCompare(b.created_at));
-        type CommentJoinRow = {
-          id: string;
-          body: string;
-          created_at: string;
-          reviewer_id: string;
-          reviewers?: { name?: string } | null;
-        };
-        commentsByPin[r.id] = cs.map((c) => {
-          const cc = c as CommentJoinRow;
-          return {
-            id: cc.id,
-            pin_id: r.id,
-            reviewer_id: cc.reviewer_id,
-            reviewer_name: cc.reviewers?.name,
-            body: cc.body,
-            created_at: cc.created_at
-          };
-        });
+        commentsByPin[r.id] = cs.map((c) => ({
+          id: c.id,
+          pin_id: r.id,
+          reviewer_id: c.reviewer_id,
+          reviewer_name: c.reviewers?.name,
+          body: c.body,
+          created_at: c.created_at
+        }));
         return {
           id: r.id,
           variant: r.variant,
@@ -170,7 +157,7 @@ export class AdminStore {
       }, 250);
     };
 
-    const tag = Math.random().toString(36).slice(2, 8);
+    const tag = crypto.randomUUID().slice(0, 8);
     const ch = supabase
       .channel(`admin:${tag}`)
       .on('postgres_changes', { event: '*', schema, table: 'pins' }, debouncedRefetch)
@@ -236,7 +223,7 @@ export function applyFilters(pins: AdminPin[], filters: AdminFilters): AdminPin[
     if (filters.resolved === 'open' && p.resolved_at) return false;
     if (filters.resolved === 'resolved' && !p.resolved_at) return false;
     if (filters.dateFrom && p.created_at < filters.dateFrom) return false;
-    if (filters.dateTo && p.created_at > filters.dateTo) return false;
+    if (filters.dateTo && p.created_at > filters.dateTo + 'T23:59:59.999Z') return false;
     return true;
   });
 }

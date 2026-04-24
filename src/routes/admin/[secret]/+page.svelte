@@ -12,7 +12,7 @@
     type AdminPin
   } from '$lib/admin/admin-store.svelte';
   import { getIdentity, type Identity } from '$lib/identity';
-  import { createPinStore } from '$lib/pin-store.svelte';
+  import { createPinStore, type Pin } from '$lib/pin-store.svelte';
   import ThreadPanel from '$lib/ThreadPanel.svelte';
   import PinFilters from '$lib/admin/PinFilters.svelte';
   import PinsTable from '$lib/admin/PinsTable.svelte';
@@ -87,6 +87,12 @@
 
     const linked = page.url.searchParams.get('pin');
     if (linked) openPinId = linked;
+  });
+
+  // Seed threadStore.pins with the full admin pin list so ThreadPanel's
+  // pinNumber() returns the correct 1-based position across all variants/pages.
+  $effect(() => {
+    threadStore.pins = adminStore.allPins as Pin[];
   });
 
   onDestroy(() => {

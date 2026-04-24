@@ -61,18 +61,40 @@
   <table class="min-w-full text-sm" data-testid="pins-table">
     <thead class="bg-neutral-50 text-xs uppercase tracking-wide text-neutral-600">
       <tr>
-        <th class="cursor-pointer px-3 py-2 text-left" onclick={() => setSort('variant')}
-          >Variant</th
+        <th
+          class="cursor-pointer px-3 py-2 text-left"
+          aria-sort={sortKey === 'variant'
+            ? sortDir === 'asc'
+              ? 'ascending'
+              : 'descending'
+            : 'none'}
+          onclick={() => setSort('variant')}>Variant</th
         >
-        <th class="cursor-pointer px-3 py-2 text-left" onclick={() => setSort('page')}>Page</th>
-        <th class="cursor-pointer px-3 py-2 text-left" onclick={() => setSort('reviewer')}
-          >Reviewer</th
+        <th
+          class="cursor-pointer px-3 py-2 text-left"
+          aria-sort={sortKey === 'page' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}
+          onclick={() => setSort('page')}>Page</th
         >
-        <th class="px-3 py-2 text-left">First comment</th>
-        <th class="px-3 py-2 text-left">Replies</th>
-        <th class="px-3 py-2 text-left">Resolved</th>
-        <th class="cursor-pointer px-3 py-2 text-left" onclick={() => setSort('created_at')}
-          >Created</th
+        <th
+          class="cursor-pointer px-3 py-2 text-left"
+          aria-sort={sortKey === 'reviewer'
+            ? sortDir === 'asc'
+              ? 'ascending'
+              : 'descending'
+            : 'none'}
+          onclick={() => setSort('reviewer')}>Reviewer</th
+        >
+        <th class="px-3 py-2 text-left" aria-sort="none">First comment</th>
+        <th class="px-3 py-2 text-left" aria-sort="none">Replies</th>
+        <th class="px-3 py-2 text-left" aria-sort="none">Resolved</th>
+        <th
+          class="cursor-pointer px-3 py-2 text-left"
+          aria-sort={sortKey === 'created_at'
+            ? sortDir === 'asc'
+              ? 'ascending'
+              : 'descending'
+            : 'none'}
+          onclick={() => setSort('created_at')}>Created</th
         >
       </tr>
     </thead>

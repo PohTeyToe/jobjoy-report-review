@@ -12,10 +12,6 @@ function variantTitle(slug: VariantSlug): string {
   return VARIANTS.find((v) => v.slug === slug)?.title ?? slug;
 }
 
-function fmt(ts: string): string {
-  return ts;
-}
-
 /**
  * Pure markdown generator for the admin "Export feedback pack" button.
  * Deterministic output (sorted by variant order then created_at asc) so a
@@ -61,9 +57,9 @@ export function buildMarkdown(input: ExportInput): string {
       lines.push(
         `### Pin ${pinCounter} · Page ${pin.page_index + 1} · ${pin.reviewer_name ?? '—'}`
       );
-      lines.push(`Created: ${fmt(pin.created_at)}`);
+      lines.push(`Created: ${pin.created_at}`);
       lines.push(`Position: ${pin.x_pct.toFixed(1)}% from left, ${pin.y_pct.toFixed(1)}% from top`);
-      const status = pin.resolved_at ? `Resolved ${fmt(pin.resolved_at)}` : 'Open';
+      const status = pin.resolved_at ? `Resolved ${pin.resolved_at}` : 'Open';
       lines.push(`Status: ${status}`);
       lines.push('');
 
@@ -71,7 +67,7 @@ export function buildMarkdown(input: ExportInput): string {
         .slice()
         .sort((a, b) => a.created_at.localeCompare(b.created_at));
       for (const c of thread) {
-        lines.push(`**${c.reviewer_name ?? '—'}** (${fmt(c.created_at)}):`);
+        lines.push(`**${c.reviewer_name ?? '—'}** (${c.created_at}):`);
         lines.push(c.body);
         lines.push('');
       }

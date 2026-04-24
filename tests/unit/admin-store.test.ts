@@ -105,6 +105,27 @@ describe('admin-store applyFilters', () => {
     expect(out).toHaveLength(1);
     expect(out[0].id).toBe('p2');
   });
+
+  it('dateTo includes pins created later in the same day', () => {
+    const today = '2026-04-24';
+    const todayPin: AdminPin = {
+      id: 'p-today',
+      variant: 'recommended',
+      page_index: 0,
+      x_pct: 0,
+      y_pct: 0,
+      reviewer_id: 'rev-1',
+      reviewer_name: 'Alice',
+      first_comment: 'today',
+      comment_count: 1,
+      resolved_at: null,
+      // Full ISO timestamp later in the same day (afternoon UTC).
+      created_at: '2026-04-24T15:42:11.123Z'
+    };
+    const out = applyFilters([todayPin], { ...defaultFilters(), dateTo: today });
+    expect(out).toHaveLength(1);
+    expect(out[0].id).toBe('p-today');
+  });
 });
 
 describe('admin-store loadAll', () => {

@@ -38,7 +38,7 @@
               <span class="text-neutral-900">{v.title}</span>
             </div>
             <ul class="mt-1 space-y-1 text-xs text-neutral-600">
-              {#each list as pk (pk.reviewer_id + pk.ranking)}
+              {#each list as pk (`${pk.reviewer_id}:${pk.ranking}`)}
                 <li>
                   <span class="font-medium text-neutral-800">{pk.reviewer_name ?? '—'}</span>
                   <span class="text-neutral-500">(rank {pk.ranking})</span>
