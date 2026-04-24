@@ -30,12 +30,24 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Type check
+        env:
+          PUBLIC_SUPABASE_URL: https://example.supabase.co
+          PUBLIC_SUPABASE_ANON_KEY: placeholder
+          PUBLIC_ADMIN_SECRET: placeholder
         run: pnpm run check
 
       - name: Unit tests
+        env:
+          PUBLIC_SUPABASE_URL: https://example.supabase.co
+          PUBLIC_SUPABASE_ANON_KEY: placeholder
+          PUBLIC_ADMIN_SECRET: placeholder
         run: pnpm test
 
       - name: Playwright spec parse check
+        env:
+          PUBLIC_SUPABASE_URL: https://example.supabase.co
+          PUBLIC_SUPABASE_ANON_KEY: placeholder
+          PUBLIC_ADMIN_SECRET: placeholder
         run: pnpm exec playwright test --list
 
       - name: Smoke build
