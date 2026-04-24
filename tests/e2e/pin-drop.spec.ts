@@ -1,24 +1,5 @@
-import { expect, test, type Page } from '@playwright/test';
-
-async function ensureIdentity(page: Page): Promise<boolean> {
-  await page.goto('/review');
-  const modal = page.getByTestId('name-modal');
-  if (await modal.isVisible().catch(() => false)) {
-    const reviewerName = `e2e-test-${Math.random().toString(36).slice(2, 10)}`;
-    await page.getByTestId('name-input').fill(reviewerName);
-    await page.getByTestId('name-submit').click();
-    if (
-      await page
-        .getByRole('alert')
-        .isVisible()
-        .catch(() => false)
-    ) {
-      return false;
-    }
-    await expect(modal).toBeHidden();
-  }
-  return true;
-}
+import { expect, test } from '@playwright/test';
+import { ensureIdentity } from './helpers';
 
 test('pin drop persists across reload within ~20px of click point', async ({ page }) => {
   const ok = await ensureIdentity(page);

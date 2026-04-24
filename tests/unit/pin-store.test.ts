@@ -30,9 +30,15 @@ vi.mock('../../src/lib/supabase', () => {
             })),
             select: vi.fn(() => ({
               eq: vi.fn(() => ({
-                order: pinSelect
+                // First .order('created_at', { ascending: true }) returns a
+                // builder whose .order(...) is the awaitable thenable. The
+                // store chains a second .order to scope comments asc.
+                order: vi.fn(() => ({
+                  order: pinSelect
+                }))
               }))
-            }))
+            })),
+            delete: vi.fn(() => ({ eq: vi.fn().mockResolvedValue({ error: null }) }))
           };
         }
         if (table === 'comments') {

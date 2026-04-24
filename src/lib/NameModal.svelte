@@ -11,6 +11,7 @@
   let submitting = $state(false);
   let error = $state<string | null>(null);
   let inputEl: HTMLInputElement | undefined = $state();
+  let submitEl: HTMLButtonElement | undefined = $state();
 
   $effect(() => {
     // Autofocus the input once mounted.
@@ -35,10 +36,10 @@
   function onKeydown(e: KeyboardEvent): void {
     // Trap focus inside the modal; Esc is intentionally NOT a close path —
     // the reviewer must enter a name before they can interact with the page.
-    if (e.key === 'Tab') {
-      e.preventDefault();
-      inputEl?.focus();
-    }
+    if (e.key !== 'Tab') return;
+    e.preventDefault();
+    if (document.activeElement === submitEl) inputEl?.focus();
+    else submitEl?.focus();
   }
 </script>
 
@@ -47,6 +48,8 @@
   role="dialog"
   aria-modal="true"
   aria-labelledby="name-modal-title"
+  tabindex="-1"
+  onkeydown={onKeydown}
 >
   <form
     class="w-full max-w-sm rounded-xl bg-white p-6 shadow-2xl"
@@ -67,9 +70,9 @@
         bind:value={name}
         placeholder="e.g. George"
         autocomplete="off"
+        maxlength="100"
         data-testid="name-input"
         aria-label="Your name"
-        onkeydown={onKeydown}
         class="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/20"
       />
     </label>
@@ -78,6 +81,7 @@
     {/if}
     <div class="mt-4 flex justify-end">
       <button
+        bind:this={submitEl}
         type="submit"
         disabled={!name.trim() || submitting}
         data-testid="name-submit"

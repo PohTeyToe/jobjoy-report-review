@@ -51,12 +51,27 @@ function genTempId(): string {
  * Implemented as a class instance so each route can own its own state without
  * leaking globals into tests.
  */
+interface PinRow {
+  id: string;
+  variant: VariantSlug;
+  page_index: number;
+  x_pct: number;
+  y_pct: number;
+  reviewer_id: string;
+  resolved_at: string | null;
+  created_at: string;
+  reviewers?: { name?: string } | null;
+  comments?: Array<{ body: string; created_at: string }> | null;
+}
+
 export class PinStore {
   pins = $state<Pin[]>([]);
   failed = $state<FailedDrop[]>([]);
   loading = $state(false);
+  private activeVariant: VariantSlug | null = null;
 
   async loadPins(variant: VariantSlug): Promise<void> {
+    this.activeVariant = variant;
     this.loading = true;
     try {
       // Pull pins + their first comment + reviewer name in one round-trip.
@@ -69,28 +84,23 @@ export class PinStore {
            comments ( body, created_at )`
         )
         .eq('variant', variant)
-        .order('created_at', { ascending: true });
+        .order('created_at', { ascending: true })
+        .order('created_at', { ascending: true, foreignTable: 'comments' });
 
       if (error) {
         console.error('[pin-store] loadPins failed:', error);
-        this.pins = [];
+        if (this.activeVariant === variant) this.pins = [];
         return;
       }
 
-      const rows = (data ?? []) as unknown as Array<{
-        id: string;
-        variant: VariantSlug;
-        page_index: number;
-        x_pct: number;
-        y_pct: number;
-        reviewer_id: string;
-        resolved_at: string | null;
-        created_at: string;
-        reviewers?: { name?: string } | null;
-        comments?: Array<{ body: string; created_at: string }> | null;
-      }>;
+      // Bail if a newer loadPins started after we awaited.
+      if (this.activeVariant !== variant) return;
+
+      const rows: PinRow[] = (data ?? []) as PinRow[];
 
       this.pins = rows.map((r) => {
+        // Server orders comments asc via the chained .order() above; the
+        // client-side sort is a defensive fallback for older/cached payloads.
         const firstComment = (r.comments ?? [])
           .slice()
           .sort((a, b) => a.created_at.localeCompare(b.created_at))[0];
@@ -118,6 +128,7 @@ export class PinStore {
    * resolves once the real row is in place (or rejects on failure).
    */
   async dropPin(input: DropPinInput): Promise<string> {
+    const mySlug = input.variant;
     const tempId = genTempId();
     const tempPin: Pin = {
       id: tempId,
@@ -132,6 +143,10 @@ export class PinStore {
       created_at: isoNow(),
       isOptimistic: true
     };
+    // Note: we do NOT bail here even if `activeVariant` doesn't match —
+    // a fresh PinStore that hasn't loaded yet has `activeVariant === null`,
+    // and the post-await checks below are sufficient to guard against the
+    // variant-switch race.
     this.pins = [...this.pins, tempPin];
 
     try {
@@ -161,7 +176,20 @@ export class PinStore {
       });
 
       if (commentErr) {
+        // Roll back the orphaned pin row so we don't leave a zombie in DB.
+        try {
+          await supabase.from('pins').delete().eq('id', realId);
+        } catch {
+          // best-effort rollback
+        }
         throw new Error(commentErr.message ?? 'comment insert failed');
+      }
+
+      if (this.activeVariant !== null && this.activeVariant !== mySlug) {
+        // User has switched variants since we started; do not mutate the
+        // visible pin list (it now belongs to a different variant). The row
+        // still persisted server-side and will reappear on reload.
+        return realId;
       }
 
       this.pins = this.pins.map((p) =>
@@ -170,7 +198,9 @@ export class PinStore {
       return realId;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'unknown';
-      this.pins = this.pins.filter((p) => p.id !== tempId);
+      if (this.activeVariant === null || this.activeVariant === mySlug) {
+        this.pins = this.pins.filter((p) => p.id !== tempId);
+      }
       this.failed = [...this.failed, { tempId, input, error: message }];
       throw err;
     }

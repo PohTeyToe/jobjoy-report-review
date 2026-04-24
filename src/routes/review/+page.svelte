@@ -125,8 +125,14 @@
     ) as HTMLElement | null;
     if (!pageEl) return;
     const rect = pageEl.getBoundingClientRect();
-    const left = rect.left + window.scrollX + (rect.width * detail.x_pct) / 100;
-    const top = rect.top + window.scrollY + (rect.height * detail.y_pct) / 100;
+    const rawLeft = rect.left + window.scrollX + (rect.width * detail.x_pct) / 100;
+    const rawTop = rect.top + window.scrollY + (rect.height * detail.y_pct) / 100;
+    const POPOVER_W = 296;
+    const POPOVER_H = 160;
+    const maxLeft = window.scrollX + window.innerWidth - POPOVER_W;
+    const maxTop = window.scrollY + window.innerHeight - POPOVER_H;
+    const left = Math.max(0, Math.min(rawLeft, maxLeft));
+    const top = Math.max(0, Math.min(rawTop, maxTop));
     pending = {
       variant: detail.variant,
       page_index: detail.page_index,
