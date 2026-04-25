@@ -35,9 +35,15 @@ body {
    intentional, mirrors a Letter-size doc.
    `!important` is needed here because variant CSS (loaded into the same
    shadow root after this stylesheet) sets `width`/`height` on `.page`
-   directly with no class qualifier, which beats us on specificity. */
+   directly with no class qualifier — same specificity, but later source
+   order wins, so `!important` is the cleanest override.
+   `min(8.5in, 100%)` keeps the page exactly 8.5in on desktop (where pin
+   coord math was verified) but lets it shrink to fit narrow viewports
+   (phones/tablets) so content doesn't overflow horizontally and get
+   clipped by the @media (max-width: 480px) `overflow-x: hidden` rule
+   below. `max-width` is kept as a belt-and-braces guard. */
 .page {
-  width: 8.5in !important;
+  width: min(8.5in, 100%) !important;
   max-width: 8.5in !important;
   min-height: 11in !important;
   /* Drop any fixed `height` the variant set so content can grow naturally
