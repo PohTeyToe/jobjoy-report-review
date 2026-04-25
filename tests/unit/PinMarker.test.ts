@@ -30,4 +30,21 @@ describe('PinMarker', () => {
     });
     expect(getByTestId('pin-marker').getAttribute('data-optimistic')).toBe('true');
   });
+
+  it('marks resolved state via data-resolved attribute and aria-label', () => {
+    const { getByTestId } = render(PinMarker, {
+      props: { id: 'pin-r', index: 4, isResolved: true }
+    });
+    const btn = getByTestId('pin-marker');
+    expect(btn.getAttribute('data-resolved')).toBe('true');
+    expect(btn.getAttribute('aria-label')).toContain('resolved');
+    expect(btn.hasAttribute('disabled')).toBe(false);
+  });
+
+  it('does not set data-resolved when not resolved', () => {
+    const { getByTestId } = render(PinMarker, {
+      props: { id: 'pin-u', index: 5, isResolved: false }
+    });
+    expect(getByTestId('pin-marker').getAttribute('data-resolved')).toBeNull();
+  });
 });

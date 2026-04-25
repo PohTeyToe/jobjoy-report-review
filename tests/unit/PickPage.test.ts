@@ -76,6 +76,44 @@ describe('PickPage', () => {
     });
   });
 
+  it('Enter on a focused non-rank-1 card promotes it to rank 1', async () => {
+    const { container } = render(PickPage, { props: {} });
+    await waitFor(() =>
+      expect(container.querySelectorAll('[data-testid="pick-card"]').length).toBe(VARIANTS.length)
+    );
+
+    const targetSlug = VARIANTS[2].slug;
+    const card = container.querySelector(
+      `[data-testid="pick-card"][data-slug="${targetSlug}"]`
+    ) as HTMLElement;
+    card.focus();
+    await fireEvent.keyDown(card, { key: 'Enter' });
+
+    await waitFor(() => {
+      const rank1 = container.querySelector('[data-testid="pick-card"][data-rank="1"]');
+      expect(rank1?.getAttribute('data-slug')).toBe(targetSlug);
+    });
+  });
+
+  it('Space on a focused non-rank-1 card promotes it to rank 1', async () => {
+    const { container } = render(PickPage, { props: {} });
+    await waitFor(() =>
+      expect(container.querySelectorAll('[data-testid="pick-card"]').length).toBe(VARIANTS.length)
+    );
+
+    const targetSlug = VARIANTS[4].slug;
+    const card = container.querySelector(
+      `[data-testid="pick-card"][data-slug="${targetSlug}"]`
+    ) as HTMLElement;
+    card.focus();
+    await fireEvent.keyDown(card, { key: ' ' });
+
+    await waitFor(() => {
+      const rank1 = container.querySelector('[data-testid="pick-card"][data-rank="1"]');
+      expect(rank1?.getAttribute('data-slug')).toBe(targetSlug);
+    });
+  });
+
   it('arrow-down on a focused card moves it down one rank', async () => {
     const { container } = render(PickPage, { props: {} });
     await waitFor(() =>

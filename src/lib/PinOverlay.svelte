@@ -96,7 +96,13 @@
       data-testid="pin-position"
       data-pin-id={p.pin.id}
     >
-      <PinMarker id={p.pin.id} index={p.index} isOptimistic={p.pin.isOptimistic} {onopen} />
+      <PinMarker
+        id={p.pin.id}
+        index={p.index}
+        isOptimistic={p.pin.isOptimistic}
+        isResolved={p.pin.resolved_at != null}
+        {onopen}
+      />
     </div>
   {/each}
 </div>

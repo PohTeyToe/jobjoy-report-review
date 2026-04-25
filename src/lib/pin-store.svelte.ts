@@ -412,6 +412,31 @@ export class PinStore {
       return;
     }
     if (type === 'INSERT' && row.variant && row.variant === this.activeVariant) {
+      // Dedup: if realtime echo arrives before our dropPin INSERT response, swap temp id in place (else {#each} key set duplicates and crashes).
+      // Coord match relies on Postgres float8 preserving IEEE 754 round-trip; if we ever round coords, switch to an epsilon compare.
+      const matchTempIdx = this.pins.findIndex(
+        (p) =>
+          p.id.startsWith('temp-') &&
+          p.variant === row.variant &&
+          p.page_index === row.page_index &&
+          p.x_pct === row.x_pct &&
+          p.y_pct === row.y_pct &&
+          p.reviewer_id === row.reviewer_id
+      );
+      if (matchTempIdx !== -1) {
+        this.pins = this.pins.map((p, i) =>
+          i === matchTempIdx
+            ? {
+                ...p,
+                id: row.id,
+                created_at: row.created_at ?? p.created_at,
+                resolved_at: row.resolved_at ?? p.resolved_at,
+                isOptimistic: false
+              }
+            : p
+        );
+        return;
+      }
       // Build a Pin from the partial row. reviewer_name will fill in on the
       // next loadPins; for the realtime echo we accept the missing label.
       const pin: Pin = {

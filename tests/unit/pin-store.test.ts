@@ -125,6 +125,79 @@ describe('pin-store', () => {
     expect(store.failed).toHaveLength(1);
   });
 
+  it('applyRealtimePin INSERT replaces matching optimistic temp row in place', async () => {
+    // Simulate dropPin's optimistic step: a temp row exists locally.
+    const pinDef = deferred<{ data: unknown; error: unknown }>();
+    pinInsertSingle.mockImplementationOnce(() => pinDef.promise);
+    commentInsert.mockResolvedValueOnce({ data: null, error: null });
+
+    const store = createPinStore();
+    store.__setActiveVariantForTests('recommended');
+    const dropPromise = store.dropPin(baseInput);
+    await Promise.resolve();
+    expect(store.pins).toHaveLength(1);
+    expect(store.pins[0].id.startsWith('temp-')).toBe(true);
+
+    // Realtime echoes the canonical row BEFORE dropPin's INSERT response
+    // resolves. Without dedup, this would push a second row with a different
+    // id and crash the keyed {#each} (each_key_duplicate).
+    store.applyRealtimePin('INSERT', {
+      id: 'real-uuid-rt',
+      variant: 'recommended',
+      page_index: baseInput.page_index,
+      x_pct: baseInput.x_pct,
+      y_pct: baseInput.y_pct,
+      reviewer_id: baseInput.reviewer.id,
+      resolved_at: null,
+      created_at: '2026-04-24T00:00:00Z'
+    });
+
+    expect(store.pins).toHaveLength(1);
+    expect(store.pins[0].id).toBe('real-uuid-rt');
+    expect(store.pins[0].isOptimistic).toBe(false);
+
+    // Now resolve dropPin's INSERT response — temp swap path is a no-op
+    // because the temp id no longer exists. Row stays single.
+    pinDef.resolve({
+      data: { id: 'real-uuid-rt', created_at: '2026-04-24T00:00:00Z' },
+      error: null
+    });
+    await dropPromise;
+    expect(store.pins).toHaveLength(1);
+    expect(store.pins[0].id).toBe('real-uuid-rt');
+  });
+
+  it('applyRealtimePin INSERT for an already-present id is a no-op (no duplicate)', async () => {
+    const store = createPinStore();
+    store.__setActiveVariantForTests('recommended');
+    store.__setPinsForTests([
+      {
+        id: 'real-1',
+        variant: 'recommended',
+        page_index: 0,
+        x_pct: 50,
+        y_pct: 50,
+        reviewer_id: 'rev-1',
+        resolved_at: null,
+        created_at: '2026-04-24T00:00:00Z'
+      }
+    ]);
+
+    store.applyRealtimePin('INSERT', {
+      id: 'real-1',
+      variant: 'recommended',
+      page_index: 0,
+      x_pct: 50,
+      y_pct: 50,
+      reviewer_id: 'rev-1',
+      resolved_at: null,
+      created_at: '2026-04-24T00:00:00Z'
+    });
+
+    expect(store.pins).toHaveLength(1);
+    expect(store.pins[0].id).toBe('real-1');
+  });
+
   it('loadPins maps joined rows into the Pin shape', async () => {
     pinSelect.mockResolvedValueOnce({
       data: [
