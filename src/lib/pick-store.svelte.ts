@@ -101,6 +101,7 @@ export class PickStore {
    * `submitError`. On failure surfaces the message via `submitError`.
    */
   async submit(reviewerId: string): Promise<void> {
+    if (this.submitting) return;
     this.submitting = true;
     this.submitError = null;
     try {

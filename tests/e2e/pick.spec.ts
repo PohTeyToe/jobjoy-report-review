@@ -59,7 +59,7 @@ test('pick flow: name modal → drag rank → submit → confirmation; reload pr
 
   // Confirmation surface: either the persistent "Saved" flag or the toast.
   const confirmed = page.getByTestId('pick-submitted-flag').or(page.getByTestId('pick-toast'));
-  await expect(confirmed.first()).toBeVisible({ timeout: 10_000 });
+  await expect(confirmed).toBeVisible({ timeout: 10_000 });
 
   // Now reload — modal should NOT appear (identity persisted), and the
   // ranking should be hydrated from the prior submission.

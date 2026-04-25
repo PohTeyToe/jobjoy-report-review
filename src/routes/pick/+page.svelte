@@ -1,17 +1,14 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import NameModal from '$lib/NameModal.svelte';
   import { getIdentity, bumpLastSeen, type Identity } from '$lib/identity';
-  import { VARIANTS, type VariantSlug } from '$lib/variants';
+  import { VARIANTS, type Variant, type VariantSlug } from '$lib/variants';
   import { createPickStore } from '$lib/pick-store.svelte';
 
-  const VARIANT_BY_SLUG: Record<VariantSlug, (typeof VARIANTS)[number]> = VARIANTS.reduce(
-    (acc, v) => {
-      acc[v.slug] = v;
-      return acc;
-    },
-    {} as Record<VariantSlug, (typeof VARIANTS)[number]>
-  );
+  const VARIANT_BY_SLUG = Object.fromEntries(VARIANTS.map((v) => [v.slug, v])) as Record<
+    VariantSlug,
+    Variant
+  >;
 
   const store = createPickStore();
   let identity = $state<Identity | null>(null);
@@ -20,6 +17,7 @@
   let overIndex = $state<number | null>(null);
   let toast = $state<string | null>(null);
   let toastTimer: ReturnType<typeof setTimeout> | null = null;
+  let dragAnnouncement = $state('');
 
   function showToast(text: string): void {
     toast = text;
@@ -29,8 +27,15 @@
     }, 3000);
   }
 
+  onDestroy(() => {
+    if (toastTimer) clearTimeout(toastTimer);
+  });
+
   function onDragStart(e: DragEvent, index: number): void {
     dragIndex = index;
+    const slug = store.ranking[index];
+    const v = slug ? VARIANT_BY_SLUG[slug] : null;
+    if (v) dragAnnouncement = `Moving ${v.title}. Drop to place.`;
     if (e.dataTransfer) {
       e.dataTransfer.effectAllowed = 'move';
       // Firefox refuses to fire dragover/drop unless setData is called.
@@ -55,11 +60,13 @@
     store.reorder(dragIndex, index);
     dragIndex = null;
     overIndex = null;
+    dragAnnouncement = '';
   }
 
   function onDragEnd(): void {
     dragIndex = null;
     overIndex = null;
+    dragAnnouncement = '';
   }
 
   function onCardClick(slug: VariantSlug): void {
@@ -103,7 +110,6 @@
       showToast('Picks saved. Thanks!');
     } catch (err) {
       console.error('[pick] submit failed:', err);
-      showToast('Could not save picks — try again.');
     }
   }
 
@@ -126,6 +132,7 @@
 </script>
 
 <main class="mx-auto max-w-3xl px-6 py-12">
+  <div aria-live="polite" aria-atomic="true" class="sr-only">{dragAnnouncement}</div>
   <header class="mb-8">
     <a href="/" class="text-sm text-neutral-500 hover:text-neutral-900">← Home</a>
     <h1 class="mt-4 text-4xl font-semibold tracking-tight">Pick your favourite Sample 1 design</h1>
@@ -140,21 +147,20 @@
     {/if}
   </header>
 
+  {#if store.loading}<p class="text-sm text-neutral-500">Loading your previous picks…</p>{/if}
   <ol
-    role="list"
+    role="listbox"
     aria-label="Variant ranking — top of list is rank 1"
     class="space-y-3"
     data-testid="pick-list"
   >
     {#each store.ranking as slug, index (slug)}
       {@const v = VARIANT_BY_SLUG[slug]}
-      <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-      <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
       <li
-        role="listitem"
+        role="option"
+        aria-selected={index === 0}
         tabindex="0"
         draggable="true"
-        aria-grabbed={dragIndex === index}
         aria-label={`Rank ${index + 1}: ${v.title}. Press arrow up or down to move, enter to promote to top.`}
         data-testid="pick-card"
         data-slug={slug}
