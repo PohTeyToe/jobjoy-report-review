@@ -73,13 +73,33 @@
     normalize.textContent = normalizeCss;
     shadow!.appendChild(normalize);
 
-    // Pull in <style> tags from <head> (and anywhere else).
+    // Pull in <style> tags from <head> (and anywhere else). Rewrite `:root`
+    // selectors to `:host` so CSS custom properties defined by the variant
+    // actually cascade — inside a shadow root there is no `<html>` element,
+    // so a `:root { --ink: ... }` rule matches nothing and every `var(--ink)`
+    // reference downstream resolves to the (empty) initial value. The host
+    // element IS in the shadow tree and inheritance flows from `:host` into
+    // the shadow children, so swapping `:root` → `:host` makes the
+    // declarations actually apply. This was a silent latent bug — most
+    // variants happened to look fine because their `var()` refs landed in
+    // places where the empty fallback didn't matter (text color inherited
+    // from elsewhere, backgrounds defaulting to transparent), but
+    // taste-frontend p6 IPP diagram has `<line>` elements whose `stroke`
+    // defaults to `none` when `var(--ink-strong)` resolves empty — so the
+    // diagonal connectors between satellite labels and the center diamond
+    // disappeared entirely while the polygon arrowheads (which default to
+    // `fill: black` when `var(--accent)` resolves empty) stayed visible,
+    // leaving a confusing "arrowheads floating around the center" look.
+    // Use a regex that only touches `:root` as a top-level selector token,
+    // not as part of a longer identifier — `:root-foo` would never match
+    // anyway but be defensive.
     const styles = doc.querySelectorAll('style');
     styles.forEach((s) => {
       const clone = document.createElement('style');
       // copy attributes (e.g. data-inlined-from)
       for (const { name, value } of Array.from(s.attributes)) clone.setAttribute(name, value);
-      clone.textContent = s.textContent ?? '';
+      const css = s.textContent ?? '';
+      clone.textContent = css.replace(/(^|[^a-zA-Z0-9_-]):root(?![a-zA-Z0-9_-])/g, '$1:host');
       shadow!.appendChild(clone);
     });
 

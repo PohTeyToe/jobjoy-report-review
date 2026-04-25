@@ -39,7 +39,7 @@
           class="ml-auto shrink-0 tabular-nums text-neutral-500"
           data-testid="document-frame-page-indicator"
         >
-          Section {displayPage} of {pageCount}
+          Page {displayPage} of {pageCount}
         </span>
       {/if}
     </div>

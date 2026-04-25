@@ -53,7 +53,7 @@ body {
   box-sizing: border-box !important;
   margin-inline: auto !important;
   /* Treat each .page as a discrete sheet of paper: subtle outline + soft
-     shadow. Helps reinforce the "Section X of N" mental model when several
+     shadow. Helps reinforce the "Page X of N" mental model when several
      pages are stacked in the document card. */
   background: #ffffff;
   border: 1px solid rgba(15, 23, 42, 0.06);
