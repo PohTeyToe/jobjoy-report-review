@@ -1,14 +1,6 @@
 <script lang="ts">
-  /**
-   * Document-viewer chrome around <VariantRenderer>. Frames the variant in
-   * an off-white app background with a white "page" card carrying a thin
-   * border, a subtle drop shadow, and a header bar that reads like an
-   * exported PDF document.
-   *
-   * Pin coordinates are computed against the .page elements INSIDE the
-   * shadow root via getBoundingClientRect(); this frame only contributes
-   * outer margin/border, so pin placement stays correct.
-   */
+  // PDF-style chrome around <VariantRenderer>. Pin coords are anchored to the .page
+  // rects INSIDE the shadow root, so this outer frame can't shift them.
   type Props = {
     title: string;
     pageCount: number;
@@ -18,9 +10,9 @@
 
   const { title, pageCount, pageIndex, children }: Props = $props();
 
-  const safePageCount = $derived(Math.max(pageCount, 1));
+  const hasPages = $derived(pageCount > 0);
   // pageIndex is 0-based internally; humans want 1-based.
-  const displayPage = $derived(Math.min(Math.max(pageIndex + 1, 1), safePageCount));
+  const displayPage = $derived(Math.min(Math.max(pageIndex + 1, 1), Math.max(pageCount, 1)));
 </script>
 
 <div class="bg-neutral-100 px-3 py-6 sm:px-6 sm:py-8" data-testid="document-frame">
@@ -42,13 +34,14 @@
       <span class="truncate font-medium text-neutral-700" data-testid="document-frame-title">
         {title}
       </span>
-      <span
-        class="ml-auto shrink-0 tabular-nums text-neutral-500"
-        data-testid="document-frame-page-indicator"
-        aria-live="polite"
-      >
-        Page {displayPage} of {safePageCount}
-      </span>
+      {#if hasPages}
+        <span
+          class="ml-auto shrink-0 tabular-nums text-neutral-500"
+          data-testid="document-frame-page-indicator"
+        >
+          Page {displayPage} of {pageCount}
+        </span>
+      {/if}
     </div>
 
     <div class="bg-white">

@@ -148,14 +148,13 @@
         <div
           class="space-y-3 rounded-md border border-neutral-200 bg-white p-4"
           data-testid="admin-loading"
-          aria-busy="true"
-          aria-live="polite"
+          role="status"
+          aria-label="Loading pins"
         >
           <div class="h-3 w-1/3 animate-pulse rounded bg-neutral-200"></div>
           <div class="h-3 w-2/3 animate-pulse rounded bg-neutral-200"></div>
           <div class="h-3 w-1/2 animate-pulse rounded bg-neutral-200"></div>
           <div class="h-3 w-3/4 animate-pulse rounded bg-neutral-200"></div>
-          <span class="sr-only">Loading pins…</span>
         </div>
       {:else if adminStore.allPins.length === 0 && !adminStore.loadError}
         <div
