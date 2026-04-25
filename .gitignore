@@ -29,5 +29,6 @@ vite.config.ts.timestamp-*
 .tmp-polish-r2/
 .tmp-reverify/
 .tmp-var26/
+.tmp-unify/
 .playwright-cli/
 verify-polish-screenshots/

@@ -24,19 +24,34 @@ body {
   background: transparent;
 }
 
-/* Pages: clamp to letter width, allow shrinking on narrow viewports.
-   Keeps `getBoundingClientRect()` rectangles stable for pin coords —
-   width is set once by the host frame, not by per-variant rules. */
+/* Pages: enforce uniform Letter geometry across ALL variants.
+   Variants ship a mix of intrinsic page sizes (faithful 6.5x9, taste-
+   frontend 6.5x9.2, recommended/baseline under-specified, impeccable/
+   huashu 8.5x11). To make the review surface feel like the same document
+   in six skins, force every `.page` to render as an 8.5x11 sheet with
+   identical inner margins, regardless of what its upstream CSS asked for.
+   Variants whose content was authored for a smaller page (faithful,
+   taste-frontend) will have whitespace at the bottom of each page —
+   intentional, mirrors a Letter-size doc.
+   `!important` is needed here because variant CSS (loaded into the same
+   shadow root after this stylesheet) sets `width`/`height` on `.page`
+   directly with no class qualifier — same specificity, but later source
+   order wins, so `!important` is the cleanest override.
+   `min(8.5in, 100%)` keeps the page exactly 8.5in on desktop (where pin
+   coord math was verified) but lets it shrink to fit narrow viewports
+   (phones/tablets) so content doesn't overflow horizontally and get
+   clipped by the @media (max-width: 480px) `overflow-x: hidden` rule
+   below. `max-width` is kept as a belt-and-braces guard. */
 .page {
-  /* Use min() so embed shrinks below 8.5in on tablet/phone without
-     overflowing horizontally, while still hitting page geometry on desktop. */
-  width: 100%;
-  max-width: 8.5in;
-  margin-left: auto;
-  margin-right: auto;
-  /* Prevent any variant's `overflow: hidden` from clipping focus rings
-     of nested interactive elements (none today, but cheap insurance). */
-  box-sizing: border-box;
+  width: min(8.5in, 100%) !important;
+  max-width: 8.5in !important;
+  min-height: 11in !important;
+  /* Drop any fixed `height` the variant set so content can grow naturally
+     past 11in if needed (defensive — most pages fit). */
+  height: auto !important;
+  padding: 0.75in 1in !important;
+  box-sizing: border-box !important;
+  margin-inline: auto !important;
   /* Treat each .page as a discrete sheet of paper: subtle outline + soft
      shadow. Helps reinforce the "Section X of N" mental model when several
      pages are stacked in the document card. */
@@ -92,56 +107,25 @@ body {
 /* =====================================================================
    Variant-targeted geometry fixes.
    VariantRenderer stamps `data-variant-slug="..."` on every `.page` so
-   we can patch the two variants whose upstream CSS leaves page geometry
-   under-specified. These rules sit BELOW the generic `.page` block above
-   so variant CSS still cascades on top — but `data-variant-slug` adds
-   specificity high enough that we override the generic rule without
-   relying on `!important`.
-   - `recommended`: `.page` has `height: 9.25in` but NO `width`, so it
-     fills the host card (8.5in) with no horizontal padding — the cover
-     headline runs flush against the card edge. Add inner padding.
-   - `baseline`: `.page` has neither width nor height. Body pages
-     auto-size to content, so adjacent pages physically overlap (a
-     page footer prints into the next page's title). Force a min-height
-     and add inner padding to push content off the card edge.
+   we can patch absolutely-positioned content that doesn't follow the
+   uniform padding rule above. Most variants need nothing here — the
+   uniform `.page` block handles geometry — but a few have absolute-
+   positioned children that sit against the padding edge.
    ===================================================================== */
 
-.page[data-variant-slug='recommended'] {
-  /* Cover plus body pages: keep the variant's intended 9.25in height
-     (already set on `.page`), but pad horizontally so non-absolutely-
-     positioned content (e.g. body pages) doesn't kiss the card edge.
-     Note: absolutely-positioned children (e.g. `.cover-block`) are
-     positioned against the padding box, so this padding alone won't
-     move them — see the `.cover-block` override below. */
-  padding-left: 0.75in;
-  padding-right: 0.75in;
-}
-
-/* Recommended cover: the cover block is `position: absolute; left: 0`,
-   which puts it flush against the page's padding edge regardless of
-   parent padding. Push it in explicitly so the giant "JobJoy Report"
-   serif doesn't kiss the card edge. Width adjustment keeps the right
-   side from clipping after the shift. */
+/* Recommended cover: `.cover-block` is `position: absolute; left: 0`,
+   which puts it flush against the page's padding edge. Push it in to
+   match our new 1in horizontal padding so the giant "JobJoy Report"
+   serif sits inside the page margin, not on top of it. */
 .page[data-variant-slug='recommended'] .cover-block {
-  left: 0.75in;
+  left: 1in !important;
 }
 
-.page[data-variant-slug='baseline'] {
-  /* Baseline ships @page Letter print margins but never applies them
-     on screen. Add explicit page geometry so each .page renders as a
-     discrete 8.5x11 sheet with consistent inner padding — matches what
-     the print stylesheet would have produced. */
-  min-height: 11in;
-  padding: 0.75in 1in;
-  /* Ensure box-sizing matches what variants assume internally. */
-  box-sizing: border-box;
-}
-
-/* The baseline cover already has `height: 9.25in` on `.cover` — keep
-   that intentional treatment but absorb the new outer padding so it
-   doesn't blow past the new 11in min-height. */
+/* The baseline cover has its own `height: 9.25in` declaration — let it
+   shrink to fit the new uniform 11in page so it doesn't blow past the
+   page bottom. */
 .page[data-variant-slug='baseline'] > .cover {
-  height: auto;
+  height: auto !important;
   min-height: calc(11in - 1.5in); /* 11in - top/bottom padding */
 }
 
