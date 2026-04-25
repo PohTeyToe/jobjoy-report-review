@@ -1,0 +1,189 @@
+/*
+ * Variant normalization stylesheet.
+ *
+ * Injected as the FIRST <style> into the closed shadow root in
+ * VariantRenderer.svelte, so each variant's own styles cascade on top and
+ * still win on specificity ties. Keep selectors generic and value-light —
+ * this file is for cross-variant fixes that survive `pnpm sync-variants`,
+ * not for variant-specific tweaks.
+ *
+ * Anything truly specific to one variant belongs upstream in
+ * jobjoy-design-experiments. If you find yourself writing `[data-variant-slug="..."]`
+ * here, consider whether it should live there instead.
+ */
+
+/* Reset host-driven width: variants use Letter (8.5in) page geometry but
+   their bodies have no explicit width — they expand to fill the host. The
+   document chrome frame caps the host at 8.5in, so this just makes pages
+   sit flush inside the frame without clipping. */
+:host,
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+}
+
+/* Pages: clamp to letter width, allow shrinking on narrow viewports.
+   Keeps `getBoundingClientRect()` rectangles stable for pin coords —
+   width is set once by the host frame, not by per-variant rules. */
+.page {
+  /* Use min() so embed shrinks below 8.5in on tablet/phone without
+     overflowing horizontally, while still hitting page geometry on desktop. */
+  width: 100%;
+  max-width: 8.5in;
+  margin-left: auto;
+  margin-right: auto;
+  /* Prevent any variant's `overflow: hidden` from clipping focus rings
+     of nested interactive elements (none today, but cheap insurance). */
+  box-sizing: border-box;
+  /* Treat each .page as a discrete sheet of paper: subtle outline + soft
+     shadow. Helps reinforce the "Section X of N" mental model when several
+     pages are stacked in the document card. */
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+  border-radius: 2px;
+  /* Block-level relationship — needed so margin-top on `.page + .page` and
+     the per-page shadow cooperate. */
+  display: block;
+  position: relative;
+}
+
+/* Spacing between stacked pages — feels like flipping document pages,
+   not one continuous scroll. The gap also keeps the bottom of one page's
+   text from physically touching the top of the next, which on baseline p3
+   was producing visible line-overlap (verify-agent issue #4). */
+.page + .page {
+  margin-top: 1.75rem;
+}
+
+/* The first page sits flush with the title bar by default; let the host
+   frame supply its own intrinsic padding-top instead so we don't double up. */
+.page:first-child {
+  margin-top: 0;
+}
+
+/* Deep-link landing offset. When opening /review?variant=X&page=N directly
+   (cold load, no prior scroll), `scrollToPageIndex` calls `scrollIntoView({
+   block: 'start' })` on the matching .page. Without a scroll margin, the
+   target page top lands at viewport top — directly underneath the sticky
+   review header — so the heading is clipped. `scroll-margin-top` is the
+   browser-native fix: it pads the snap target so the page lands BELOW the
+   sticky bar instead of behind it.
+   Value chosen to clear the sticky review header (~56px) plus a little
+   breathing room. Variants like `impeccable` already have generous internal
+   padding-top on the page, so this stacks but doesn't visibly hurt.
+   Applied broadly so it covers headings on both the .page wrapper itself
+   and any first-child block a variant uses for its section title. */
+.page,
+.page > h1:first-child,
+.page > h2:first-child,
+.page > h3:first-child,
+.page > header:first-child,
+.page > section:first-child,
+[data-page-index],
+[data-page-index] > h1:first-child,
+[data-page-index] > h2:first-child,
+[data-page-index] > h3:first-child {
+  scroll-margin-top: 96px;
+}
+
+/* Image safety: a couple of variants set `max-width: none` on figures,
+   which can blow past the page edge on narrow viewports. */
+img,
+svg,
+figure {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Long-word safety. Hyphenation is already enabled per-variant; this is
+   a fallback for unusually long tokens on narrow viewports. */
+p,
+li,
+dd,
+dt,
+h1,
+h2,
+h3,
+h4 {
+  overflow-wrap: break-word;
+}
+
+/* Color-contrast nudge: a few variants use very light grey for muted
+   metadata text on white. Bring the lightest tier up to WCAG AA (4.5:1
+   on white = ~#767676). Variant-specific muted classes still cascade,
+   so this only takes effect when the variant didn't set its own color. */
+:where(.muted, .meta, .footnote, .caption) {
+  color: #595959;
+}
+
+/* Visible focus inside the shadow root, in case a variant wipes outlines
+   globally. Mirrors the host app's focus-visible style. */
+:focus-visible {
+  outline: 2px solid #1f2937;
+  outline-offset: 2px;
+}
+
+/* Respect users who ask for less motion. Variants don't animate much,
+   but any `transition` they ship gets neutralized here. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Mobile (≤ 480px): variants ship fixed-pt typography (Letter geometry, big
+   serif display type) that overflows narrow phones horizontally. Two-pronged
+   fix: clip horizontal overflow on each .page, and let very long display
+   headings shrink-to-fit instead of running off-screen. We can't transform-
+   scale the host because that would reduce the visual rect that
+   getBoundingClientRect returns for pin coord clicks — but luckily clicks
+   land in the same scaled space, so a transform-based scale also works.
+   We choose overflow-x:auto instead of transform because some variants use
+   sticky/fixed positioning internally that would break under a transform. */
+@media (max-width: 480px) {
+  .page {
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+  }
+  /* Display typography — bring monstrous cover headings within the viewport
+     so they don't force horizontal scroll on every page. Variant rules win
+     on specificity for non-cover content; this catches the truly huge
+     display sizes used on cover pages across all six variants. */
+  .page h1,
+  .page h2,
+  .page .display,
+  .page .title-display,
+  .page .line-title,
+  .page .line-name,
+  .page .line-for,
+  .page .line,
+  .page .cover h1,
+  .page .cover h2,
+  .page [class*='cover'] h1,
+  .page [class*='cover'] h2 {
+    font-size: clamp(1.75rem, 8.5vw, 3rem) !important;
+    line-height: 1.08 !important;
+    word-break: break-word;
+  }
+  /* Catch-all: any element whose computed font-size in stylesheet exceeds
+     viewport width is likely going to overflow. We can't easily target by
+     computed size in pure CSS, so target common big-text utility classes
+     used across variants. */
+  .page .hero-text,
+  .page .name-line,
+  .page .cover-title,
+  .page [class*='title'],
+  .page [class*='hero'] {
+    max-width: 100%;
+    overflow-wrap: break-word;
+    word-break: break-word;
+  }
+}

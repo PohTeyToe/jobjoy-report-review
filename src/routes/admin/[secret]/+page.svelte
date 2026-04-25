@@ -123,8 +123,20 @@
   </header>
 
   {#if adminStore.loadError}
-    <div role="alert" class="border-b border-red-200 bg-red-50 px-6 py-2 text-xs text-red-700">
-      {adminStore.loadError}
+    <div
+      role="alert"
+      class="flex items-center gap-3 border-b border-red-200 bg-red-50 px-6 py-2 text-xs text-red-700"
+      data-testid="admin-error"
+    >
+      <span class="flex-1">{adminStore.loadError}</span>
+      <button
+        type="button"
+        onclick={() => void adminStore.loadAll()}
+        data-testid="admin-error-retry"
+        class="rounded-md border border-red-300 bg-white px-2 py-1 text-[11px] font-medium text-red-700 hover:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+      >
+        Try again
+      </button>
     </div>
   {/if}
 
@@ -133,8 +145,27 @@
 
     <div class="space-y-6">
       {#if adminStore.loading && adminStore.allPins.length === 0}
-        <div class="rounded-md border border-neutral-200 bg-white p-6 text-sm text-neutral-500">
-          Loading…
+        <div
+          class="space-y-3 rounded-md border border-neutral-200 bg-white p-4"
+          data-testid="admin-loading"
+          role="status"
+          aria-label="Loading pins"
+        >
+          <div class="h-3 w-1/3 animate-pulse rounded bg-neutral-200"></div>
+          <div class="h-3 w-2/3 animate-pulse rounded bg-neutral-200"></div>
+          <div class="h-3 w-1/2 animate-pulse rounded bg-neutral-200"></div>
+          <div class="h-3 w-3/4 animate-pulse rounded bg-neutral-200"></div>
+        </div>
+      {:else if adminStore.allPins.length === 0 && !adminStore.loadError}
+        <div
+          class="rounded-md border border-dashed border-neutral-300 bg-white p-8 text-center"
+          data-testid="admin-empty"
+        >
+          <h2 class="text-sm font-semibold text-neutral-900">No pins yet</h2>
+          <p class="mx-auto mt-2 max-w-md text-xs text-neutral-500">
+            Share the review link with reviewers and their feedback will appear here. Pins update in
+            real time as they're dropped.
+          </p>
         </div>
       {:else}
         <PinsTable pins={filteredPins} onopen={openPin} />

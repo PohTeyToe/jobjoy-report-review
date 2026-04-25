@@ -12,10 +12,11 @@
   import { onDestroy, untrack } from 'svelte';
   import type { VariantSlug } from './variants';
   import { clickToPct } from './coord-math';
+  import normalizeCss from './variant-normalize.css?raw';
 
   type Props = {
     variant: VariantSlug;
-    onready?: () => void;
+    onready?: (detail: { pageCount: number }) => void;
     onpageclick?: (detail: {
       variant: VariantSlug;
       page_index: number;
@@ -62,6 +63,15 @@
     const html = await res.text();
     if (gen !== mountGen) return;
     const doc = new DOMParser().parseFromString(html, 'text/html');
+
+    // Inject normalization stylesheet FIRST so each variant's own styles
+    // cascade on top — anything we set here is a low-specificity baseline
+    // (resets, max-widths, prefers-reduced-motion) that variant rules can
+    // override at will.
+    const normalize = document.createElement('style');
+    normalize.setAttribute('data-variant-normalize', 'true');
+    normalize.textContent = normalizeCss;
+    shadow!.appendChild(normalize);
 
     // Pull in <style> tags from <head> (and anywhere else).
     const styles = doc.querySelectorAll('style');
@@ -121,7 +131,8 @@
       // ignore — not all test envs implement document.fonts
     }
     if (gen !== mountGen) return;
-    onready?.();
+    const pageCount = shadow!.querySelectorAll('.page').length;
+    onready?.({ pageCount });
   }
 
   onDestroy(() => {

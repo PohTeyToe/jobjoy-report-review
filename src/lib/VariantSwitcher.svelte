@@ -43,7 +43,10 @@
   });
 </script>
 
-<nav class="variant-switcher flex gap-1" aria-label="Variant switcher">
+<nav
+  class="variant-switcher flex min-w-0 flex-1 gap-1 overflow-x-auto"
+  aria-label="Variant switcher"
+>
   {#each VARIANTS as v, i}
     {@const isActive = v.slug === active}
     <button
@@ -51,7 +54,7 @@
       data-testid="variant-chip"
       data-slug={v.slug}
       data-active={isActive ? 'true' : 'false'}
-      class="chip rounded-full px-3 py-1 text-sm {isActive
+      class="chip shrink-0 whitespace-nowrap rounded-full px-3 py-1 text-sm {isActive
         ? 'chip-active bg-neutral-900 text-white'
         : 'text-neutral-600 hover:bg-neutral-100'}"
       aria-pressed={isActive}

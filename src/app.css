@@ -13,3 +13,49 @@ body {
   color: var(--color-ink);
   font-family: var(--font-sans);
 }
+
+/* ---- DocumentFrame chrome (review surface) ---- */
+/* App background contrast against the white card. Previous near-white
+   (oklch 0.99) made the card edge invisible — bump down so the card reads
+   as elevated paper on a desk. */
+.document-frame-bg {
+  background: oklch(0.94 0.005 80);
+}
+.document-card {
+  position: relative;
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.06),
+    0 12px 32px -8px rgba(15, 23, 42, 0.18);
+}
+/* Sticky title bar — stays visible while scrolling through the stacked
+   pages. top:53px sits below the global header. Solid bg (not just blur)
+   because variants are white-on-white and translucent would vanish.
+   z-index:5 beats anything inside the variant. */
+.document-frame-titlebar {
+  position: sticky;
+  top: 53px;
+  z-index: 5;
+  background: rgba(250, 250, 250, 0.96);
+  backdrop-filter: saturate(1.1) blur(6px);
+  -webkit-backdrop-filter: saturate(1.1) blur(6px);
+  border-top-left-radius: 0.5rem;
+  border-top-right-radius: 0.5rem;
+}
+/* Breathing room between the title bar and where variant content begins.
+   Without this, variants whose first .page hugs the top edge get sliced
+   by the card's rounded corners. */
+.document-card-body {
+  padding-top: 1.25rem;
+}
+
+/* ---- VariantSwitcher (review header) ---- */
+.variant-switcher {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  /* Edge fade: hint that more chips exist off-right when content overflows. */
+  mask-image: linear-gradient(to right, black 92%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, black 92%, transparent 100%);
+}
+.variant-switcher::-webkit-scrollbar {
+  display: none;
+}

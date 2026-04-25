@@ -4,3 +4,9 @@ node_modules
 package-lock.json
 pnpm-lock.yaml
 static/variants
+.playwright-cli
+.tmp-polish-r2
+.tmp-reverify
+verify-polish-screenshots
+qa-results
+playwright-report

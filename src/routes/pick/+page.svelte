@@ -233,8 +233,20 @@
       </span>
     {/if}
     {#if store.submitError}
-      <span class="text-sm text-red-600" role="alert" data-testid="pick-error">
+      <span
+        class="flex items-center gap-2 text-sm text-red-600"
+        role="alert"
+        data-testid="pick-error"
+      >
         {store.submitError}
+        <button
+          type="button"
+          onclick={() => void onSubmit()}
+          data-testid="pick-error-retry"
+          class="rounded-md border border-red-300 bg-white px-2 py-0.5 text-xs font-medium text-red-700 hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+        >
+          Try again
+        </button>
       </span>
     {/if}
   </div>
