@@ -89,6 +89,62 @@ body {
   scroll-margin-top: 96px;
 }
 
+/* =====================================================================
+   Variant-targeted geometry fixes.
+   VariantRenderer stamps `data-variant-slug="..."` on every `.page` so
+   we can patch the two variants whose upstream CSS leaves page geometry
+   under-specified. These rules sit BELOW the generic `.page` block above
+   so variant CSS still cascades on top — but `data-variant-slug` adds
+   specificity high enough that we override the generic rule without
+   relying on `!important`.
+   - `recommended`: `.page` has `height: 9.25in` but NO `width`, so it
+     fills the host card (8.5in) with no horizontal padding — the cover
+     headline runs flush against the card edge. Add inner padding.
+   - `baseline`: `.page` has neither width nor height. Body pages
+     auto-size to content, so adjacent pages physically overlap (a
+     page footer prints into the next page's title). Force a min-height
+     and add inner padding to push content off the card edge.
+   ===================================================================== */
+
+.page[data-variant-slug='recommended'] {
+  /* Cover plus body pages: keep the variant's intended 9.25in height
+     (already set on `.page`), but pad horizontally so non-absolutely-
+     positioned content (e.g. body pages) doesn't kiss the card edge.
+     Note: absolutely-positioned children (e.g. `.cover-block`) are
+     positioned against the padding box, so this padding alone won't
+     move them — see the `.cover-block` override below. */
+  padding-left: 0.75in;
+  padding-right: 0.75in;
+}
+
+/* Recommended cover: the cover block is `position: absolute; left: 0`,
+   which puts it flush against the page's padding edge regardless of
+   parent padding. Push it in explicitly so the giant "JobJoy Report"
+   serif doesn't kiss the card edge. Width adjustment keeps the right
+   side from clipping after the shift. */
+.page[data-variant-slug='recommended'] .cover-block {
+  left: 0.75in;
+}
+
+.page[data-variant-slug='baseline'] {
+  /* Baseline ships @page Letter print margins but never applies them
+     on screen. Add explicit page geometry so each .page renders as a
+     discrete 8.5x11 sheet with consistent inner padding — matches what
+     the print stylesheet would have produced. */
+  min-height: 11in;
+  padding: 0.75in 1in;
+  /* Ensure box-sizing matches what variants assume internally. */
+  box-sizing: border-box;
+}
+
+/* The baseline cover already has `height: 9.25in` on `.cover` — keep
+   that intentional treatment but absorb the new outer padding so it
+   doesn't blow past the new 11in min-height. */
+.page[data-variant-slug='baseline'] > .cover {
+  height: auto;
+  min-height: calc(11in - 1.5in); /* 11in - top/bottom padding */
+}
+
 /* Image safety: a couple of variants set `max-width: none` on figures,
    which can blow past the page edge on narrow viewports. */
 img,
