@@ -15,13 +15,13 @@
   const displayPage = $derived(Math.min(Math.max(pageIndex + 1, 1), Math.max(pageCount, 1)));
 </script>
 
-<div class="bg-neutral-100 px-3 py-6 sm:px-6 sm:py-8" data-testid="document-frame">
+<div class="document-frame-bg px-3 py-6 sm:px-6 sm:py-8" data-testid="document-frame">
   <div
-    class="mx-auto w-full overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-[0_2px_4px_rgba(15,23,42,0.04),0_8px_24px_-8px_rgba(15,23,42,0.12)]"
+    class="document-card mx-auto w-full rounded-lg border border-neutral-200 bg-white"
     style="max-width: 8.5in;"
   >
     <div
-      class="flex items-center gap-2 border-b border-neutral-200 bg-neutral-50/80 px-4 py-2 text-xs"
+      class="document-frame-titlebar flex items-center gap-2 border-b border-neutral-200 px-4 py-2 text-xs"
       data-testid="document-frame-header"
     >
       <span
@@ -39,12 +39,12 @@
           class="ml-auto shrink-0 tabular-nums text-neutral-500"
           data-testid="document-frame-page-indicator"
         >
-          Page {displayPage} of {pageCount}
+          Section {displayPage} of {pageCount}
         </span>
       {/if}
     </div>
 
-    <div class="bg-white">
+    <div class="document-card-body bg-white">
       {@render children?.()}
     </div>
   </div>

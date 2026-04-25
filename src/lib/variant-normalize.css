@@ -37,12 +37,31 @@ body {
   /* Prevent any variant's `overflow: hidden` from clipping focus rings
      of nested interactive elements (none today, but cheap insurance). */
   box-sizing: border-box;
+  /* Treat each .page as a discrete sheet of paper: subtle outline + soft
+     shadow. Helps reinforce the "Section X of N" mental model when several
+     pages are stacked in the document card. */
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+  border-radius: 2px;
+  /* Block-level relationship — needed so margin-top on `.page + .page` and
+     the per-page shadow cooperate. */
+  display: block;
+  position: relative;
 }
 
 /* Spacing between stacked pages — feels like flipping document pages,
-   not one continuous scroll. Variants previously sat flush. */
+   not one continuous scroll. The gap also keeps the bottom of one page's
+   text from physically touching the top of the next, which on baseline p3
+   was producing visible line-overlap (verify-agent issue #4). */
 .page + .page {
-  margin-top: 1.25rem;
+  margin-top: 1.75rem;
+}
+
+/* The first page sits flush with the title bar by default; let the host
+   frame supply its own intrinsic padding-top instead so we don't double up. */
+.page:first-child {
+  margin-top: 0;
 }
 
 /* Image safety: a couple of variants set `max-width: none` on figures,
@@ -92,5 +111,54 @@ h4 {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+}
+
+/* Mobile (≤ 480px): variants ship fixed-pt typography (Letter geometry, big
+   serif display type) that overflows narrow phones horizontally. Two-pronged
+   fix: clip horizontal overflow on each .page, and let very long display
+   headings shrink-to-fit instead of running off-screen. We can't transform-
+   scale the host because that would reduce the visual rect that
+   getBoundingClientRect returns for pin coord clicks — but luckily clicks
+   land in the same scaled space, so a transform-based scale also works.
+   We choose overflow-x:auto instead of transform because some variants use
+   sticky/fixed positioning internally that would break under a transform. */
+@media (max-width: 480px) {
+  .page {
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+  }
+  /* Display typography — bring monstrous cover headings within the viewport
+     so they don't force horizontal scroll on every page. Variant rules win
+     on specificity for non-cover content; this catches the truly huge
+     display sizes used on cover pages across all six variants. */
+  .page h1,
+  .page h2,
+  .page .display,
+  .page .title-display,
+  .page .line-title,
+  .page .line-name,
+  .page .line-for,
+  .page .line,
+  .page .cover h1,
+  .page .cover h2,
+  .page [class*='cover'] h1,
+  .page [class*='cover'] h2 {
+    font-size: clamp(1.75rem, 8.5vw, 3rem) !important;
+    line-height: 1.08 !important;
+    word-break: break-word;
+  }
+  /* Catch-all: any element whose computed font-size in stylesheet exceeds
+     viewport width is likely going to overflow. We can't easily target by
+     computed size in pure CSS, so target common big-text utility classes
+     used across variants. */
+  .page .hero-text,
+  .page .name-line,
+  .page .cover-title,
+  .page [class*='title'],
+  .page [class*='hero'] {
+    max-width: 100%;
+    overflow-wrap: break-word;
+    word-break: break-word;
   }
 }

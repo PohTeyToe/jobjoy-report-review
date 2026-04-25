@@ -293,13 +293,27 @@
 </script>
 
 <main class="relative min-h-screen bg-neutral-100">
-  <header class="sticky top-0 z-10 border-b border-neutral-200 bg-white/90 px-4 py-3 backdrop-blur">
-    <div class="mx-auto flex max-w-6xl items-center gap-4">
-      <a href="/" class="text-sm text-neutral-500 hover:text-neutral-900">← Home</a>
+  <header
+    class="review-header sticky top-0 z-10 border-b border-neutral-200 bg-white/95 px-3 py-2 backdrop-blur sm:px-4 sm:py-3"
+  >
+    <div class="mx-auto flex max-w-6xl items-center gap-3 sm:gap-4">
+      <a href="/" class="shrink-0 text-sm text-neutral-500 hover:text-neutral-900">← Home</a>
       <VariantSwitcher active={variant} onvariantchange={onVariantChange} />
       {#if identity}
-        <span class="ml-auto text-xs text-neutral-500" data-testid="reviewer-name">
+        <span
+          class="reviewer-name ml-auto hidden shrink-0 truncate text-xs text-neutral-500 lg:inline"
+          data-testid="reviewer-name"
+          title={`Reviewing as ${identity.name}`}
+        >
           Reviewing as <span class="font-medium text-neutral-700">{identity.name}</span>
+        </span>
+        <span
+          class="ml-auto inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-neutral-900 text-[11px] font-medium uppercase text-white lg:hidden"
+          data-testid="reviewer-name-badge"
+          title={`Reviewing as ${identity.name}`}
+          aria-label={`Reviewing as ${identity.name}`}
+        >
+          {identity.name.slice(0, 1)}
         </span>
       {/if}
     </div>
