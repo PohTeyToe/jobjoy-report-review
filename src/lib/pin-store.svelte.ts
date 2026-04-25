@@ -412,6 +412,37 @@ export class PinStore {
       return;
     }
     if (type === 'INSERT' && row.variant && row.variant === this.activeVariant) {
+      // Race: our own dropPin's optimistic temp row may already be in `pins`,
+      // and the realtime INSERT echo of OUR row arrived before the dropPin
+      // INSERT response resolved (so we haven't done the temp→real swap yet).
+      // Identify the matching temp row by coords + reviewer + variant + page,
+      // and replace its id in place. Without this, the {#each} key set ends
+      // up with both `temp-xxx` AND `<real-uuid>` for the same logical pin,
+      // crashing Svelte's keyed each (each_key_duplicate) and breaking
+      // subsequent realtime renders.
+      const matchTempIdx = this.pins.findIndex(
+        (p) =>
+          p.id.startsWith('temp-') &&
+          p.variant === row.variant &&
+          p.page_index === row.page_index &&
+          p.x_pct === row.x_pct &&
+          p.y_pct === row.y_pct &&
+          p.reviewer_id === row.reviewer_id
+      );
+      if (matchTempIdx !== -1) {
+        this.pins = this.pins.map((p, i) =>
+          i === matchTempIdx
+            ? {
+                ...p,
+                id: row.id,
+                created_at: row.created_at ?? p.created_at,
+                resolved_at: row.resolved_at ?? p.resolved_at,
+                isOptimistic: false
+              }
+            : p
+        );
+        return;
+      }
       // Build a Pin from the partial row. reviewer_name will fill in on the
       // next loadPins; for the realtime echo we accept the missing label.
       const pin: Pin = {
