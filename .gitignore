@@ -26,3 +26,8 @@ vite.config.ts.timestamp-*
 
 .vercel
 .tmp-polish-fix/
+.tmp-polish-r2/
+.tmp-reverify/
+.tmp-var26/
+.playwright-cli/
+verify-polish-screenshots/

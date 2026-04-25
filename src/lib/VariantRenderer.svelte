@@ -91,11 +91,22 @@
       shadow!.appendChild(clone);
     });
 
-    // Append body children.
+    // Append body children. Stamp `data-variant-slug` on each `.page` so the
+    // normalize stylesheet can apply targeted fixes per variant without
+    // editing the upstream variant HTML (which gets blown away on next sync).
     const body = doc.body;
     if (body) {
       Array.from(body.childNodes).forEach((node) => {
-        shadow!.appendChild(node.cloneNode(true));
+        const cloned = node.cloneNode(true);
+        if (cloned instanceof Element) {
+          if (cloned.classList?.contains('page')) {
+            cloned.setAttribute('data-variant-slug', slug);
+          }
+          cloned.querySelectorAll?.('.page').forEach((p) => {
+            p.setAttribute('data-variant-slug', slug);
+          });
+        }
+        shadow!.appendChild(cloned);
       });
     }
 
