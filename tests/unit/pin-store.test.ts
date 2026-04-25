@@ -198,6 +198,46 @@ describe('pin-store', () => {
     expect(store.pins[0].id).toBe('real-1');
   });
 
+  it('applyRealtimePin INSERT matches optimistic temp within float-roundtrip epsilon', async () => {
+    // Postgres `real` rounds 64-bit JS floats; 50.123456789 → ~50.123455.
+    // Strict equality would fail and produce a duplicate keyed row.
+    const pinDef = deferred<{ data: unknown; error: unknown }>();
+    pinInsertSingle.mockImplementationOnce(() => pinDef.promise);
+    commentInsert.mockResolvedValueOnce({ data: null, error: null });
+
+    const store = createPinStore();
+    store.__setActiveVariantForTests('recommended');
+    const dropPromise = store.dropPin({
+      ...baseInput,
+      x_pct: 50.123456789,
+      y_pct: 40.987654321
+    });
+    await Promise.resolve();
+    expect(store.pins).toHaveLength(1);
+
+    store.applyRealtimePin('INSERT', {
+      id: 'real-uuid-rt',
+      variant: 'recommended',
+      page_index: baseInput.page_index,
+      // Slightly perturbed coords (simulating the float4 truncation Postgres applies)
+      x_pct: 50.12345,
+      y_pct: 40.98765,
+      reviewer_id: baseInput.reviewer.id,
+      resolved_at: null,
+      created_at: '2026-04-24T00:00:00Z'
+    });
+
+    expect(store.pins).toHaveLength(1);
+    expect(store.pins[0].id).toBe('real-uuid-rt');
+
+    pinDef.resolve({
+      data: { id: 'real-uuid-rt', created_at: '2026-04-24T00:00:00Z' },
+      error: null
+    });
+    await dropPromise;
+    expect(store.pins).toHaveLength(1);
+  });
+
   it('loadPins maps joined rows into the Pin shape', async () => {
     pinSelect.mockResolvedValueOnce({
       data: [
