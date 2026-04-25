@@ -412,14 +412,8 @@ export class PinStore {
       return;
     }
     if (type === 'INSERT' && row.variant && row.variant === this.activeVariant) {
-      // Race: our own dropPin's optimistic temp row may already be in `pins`,
-      // and the realtime INSERT echo of OUR row arrived before the dropPin
-      // INSERT response resolved (so we haven't done the temp→real swap yet).
-      // Identify the matching temp row by coords + reviewer + variant + page,
-      // and replace its id in place. Without this, the {#each} key set ends
-      // up with both `temp-xxx` AND `<real-uuid>` for the same logical pin,
-      // crashing Svelte's keyed each (each_key_duplicate) and breaking
-      // subsequent realtime renders.
+      // Dedup: if realtime echo arrives before our dropPin INSERT response, swap temp id in place (else {#each} key set duplicates and crashes).
+      // Coord match relies on Postgres float8 preserving IEEE 754 round-trip; if we ever round coords, switch to an epsilon compare.
       const matchTempIdx = this.pins.findIndex(
         (p) =>
           p.id.startsWith('temp-') &&

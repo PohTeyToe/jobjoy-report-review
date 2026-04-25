@@ -100,7 +100,7 @@
         id={p.pin.id}
         index={p.index}
         isOptimistic={p.pin.isOptimistic}
-        isResolved={p.pin.resolved_at !== null}
+        isResolved={p.pin.resolved_at != null}
         {onopen}
       />
     </div>

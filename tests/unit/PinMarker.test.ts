@@ -38,7 +38,6 @@ describe('PinMarker', () => {
     const btn = getByTestId('pin-marker');
     expect(btn.getAttribute('data-resolved')).toBe('true');
     expect(btn.getAttribute('aria-label')).toContain('resolved');
-    // Resolved markers stay clickable (still a button, no disabled attr).
     expect(btn.hasAttribute('disabled')).toBe(false);
   });
 
