@@ -117,8 +117,15 @@ describe('VariantRenderer', () => {
     });
 
     const root = __testShadowRoots.get(host)!;
-    const styleEl = root.querySelector('style') as HTMLStyleElement;
-    expect(styleEl.textContent).toContain("url('/variants/huashu/fonts/variant-font.woff2')");
+    // Skip the normalize stylesheet injected first; concatenate the rest so
+    // we can assert against the variant's own @font-face rule wherever it
+    // landed.
+    const styles = Array.from(root.querySelectorAll('style')) as HTMLStyleElement[];
+    const variantCss = styles
+      .filter((s) => !s.hasAttribute('data-variant-normalize'))
+      .map((s) => s.textContent ?? '')
+      .join('\n');
+    expect(variantCss).toContain("url('/variants/huashu/fonts/variant-font.woff2')");
   });
 
   it('re-mounts shadow content when variant prop changes', async () => {

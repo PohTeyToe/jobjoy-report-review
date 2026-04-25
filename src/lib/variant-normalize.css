@@ -1,0 +1,96 @@
+/*
+ * Variant normalization stylesheet.
+ *
+ * Injected as the FIRST <style> into the closed shadow root in
+ * VariantRenderer.svelte, so each variant's own styles cascade on top and
+ * still win on specificity ties. Keep selectors generic and value-light —
+ * this file is for cross-variant fixes that survive `pnpm sync-variants`,
+ * not for variant-specific tweaks.
+ *
+ * Anything truly specific to one variant belongs upstream in
+ * jobjoy-design-experiments. If you find yourself writing `[data-variant-slug="..."]`
+ * here, consider whether it should live there instead.
+ */
+
+/* Reset host-driven width: variants use Letter (8.5in) page geometry but
+   their bodies have no explicit width — they expand to fill the host. The
+   document chrome frame caps the host at 8.5in, so this just makes pages
+   sit flush inside the frame without clipping. */
+:host,
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+}
+
+/* Pages: clamp to letter width, allow shrinking on narrow viewports.
+   Keeps `getBoundingClientRect()` rectangles stable for pin coords —
+   width is set once by the host frame, not by per-variant rules. */
+.page {
+  /* Use min() so embed shrinks below 8.5in on tablet/phone without
+     overflowing horizontally, while still hitting page geometry on desktop. */
+  width: 100%;
+  max-width: 8.5in;
+  margin-left: auto;
+  margin-right: auto;
+  /* Prevent any variant's `overflow: hidden` from clipping focus rings
+     of nested interactive elements (none today, but cheap insurance). */
+  box-sizing: border-box;
+}
+
+/* Spacing between stacked pages — feels like flipping document pages,
+   not one continuous scroll. Variants previously sat flush. */
+.page + .page {
+  margin-top: 1.25rem;
+}
+
+/* Image safety: a couple of variants set `max-width: none` on figures,
+   which can blow past the page edge on narrow viewports. */
+img,
+svg,
+figure {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Long-word safety. Hyphenation is already enabled per-variant; this is
+   a fallback for unusually long tokens on narrow viewports. */
+p,
+li,
+dd,
+dt,
+h1,
+h2,
+h3,
+h4 {
+  overflow-wrap: break-word;
+}
+
+/* Color-contrast nudge: a few variants use very light grey for muted
+   metadata text on white. Bring the lightest tier up to WCAG AA (4.5:1
+   on white = ~#767676). Variant-specific muted classes still cascade,
+   so this only takes effect when the variant didn't set its own color. */
+:where(.muted, .meta, .footnote, .caption) {
+  color: #595959;
+}
+
+/* Visible focus inside the shadow root, in case a variant wipes outlines
+   globally. Mirrors the host app's focus-visible style. */
+:focus-visible {
+  outline: 2px solid #1f2937;
+  outline-offset: 2px;
+}
+
+/* Respect users who ask for less motion. Variants don't animate much,
+   but any `transition` they ship gets neutralized here. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

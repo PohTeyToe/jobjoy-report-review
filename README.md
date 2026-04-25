@@ -34,4 +34,8 @@ Copy `.env.example` to `.env.local`. Real values live in Vercel project envs.
 
 ## Phases
 
-Phase 0 — scaffold (this commit). Phases 1–6: variant rendering → identity + pins → threads + realtime → admin dashboard → pick surface → pre-George polish. See the handoff plan in the originating agent session for the full spec.
+Phase 0 — scaffold. Phases 1-5: variant rendering → identity + pins → threads + realtime → admin dashboard → pick surface. Phase 6 (this PR): pre-George polish — PDF-style document chrome around the variant render, shadow-injected normalization stylesheet, empty/loading/error states on every surface, focus-trap + retry buttons, deep-routes regression spec.
+
+### Document chrome (Phase 6)
+
+`/review` now wraps the variant in a `DocumentFrame` component: off-white app background, white card capped at 8.5in (Letter width) with a subtle border + drop shadow, and a header bar showing the variant title and a live "Page X of N" indicator that updates as the user scrolls. Cross-variant fixes ride on `src/lib/variant-normalize.css`, injected as the first `<style>` inside the closed shadow root so per-variant rules still cascade on top — survives `pnpm sync-variants`.

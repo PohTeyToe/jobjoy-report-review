@@ -37,9 +37,19 @@
     // Trap focus inside the modal; Esc is intentionally NOT a close path —
     // the reviewer must enter a name before they can interact with the page.
     if (e.key !== 'Tab') return;
+    if (!inputEl || !submitEl) return;
     e.preventDefault();
-    if (document.activeElement === submitEl) inputEl?.focus();
-    else submitEl?.focus();
+    // Two focusables only (input → submit). Cycle in either direction so
+    // Shift+Tab works as expected.
+    const onInput = document.activeElement === inputEl;
+    const onSubmit = document.activeElement === submitEl;
+    if (e.shiftKey) {
+      if (onInput) submitEl.focus();
+      else inputEl.focus();
+    } else {
+      if (onSubmit) inputEl.focus();
+      else submitEl.focus();
+    }
   }
 </script>
 

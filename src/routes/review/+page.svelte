@@ -5,6 +5,7 @@
   import { VARIANTS, type VariantSlug } from '$lib/variants';
   import VariantRenderer from '$lib/VariantRenderer.svelte';
   import VariantSwitcher from '$lib/VariantSwitcher.svelte';
+  import DocumentFrame from '$lib/DocumentFrame.svelte';
   import PinOverlay from '$lib/PinOverlay.svelte';
   import PinComposer from '$lib/PinComposer.svelte';
   import NameModal from '$lib/NameModal.svelte';
@@ -29,10 +30,13 @@
 
   let variant: VariantSlug = $state(readVariant());
   let pageIdx: number = $state(readPage());
+  let pageCount: number = $state(0);
   let renderer = $state<ReturnType<typeof VariantRenderer> | null>(null);
   let pendingPage: number | null = readPage();
   let suppressUrlWrite = false;
   let skipNextReady = false;
+
+  const variantTitle = $derived(VARIANTS.find((v) => v.slug === variant)?.title ?? variant);
 
   let identity = $state<Identity | null>(null);
   let needsName = $state(false);
@@ -131,7 +135,8 @@
     startPinsRealtime(slug);
   }
 
-  function onRendererReady(): void {
+  function onRendererReady(detail: { pageCount: number }): void {
+    pageCount = detail.pageCount;
     if (skipNextReady) {
       skipNextReady = false;
       const root = getShadowRoot();
@@ -151,6 +156,25 @@
     }
     pendingPage = null;
     refreshShadow();
+  }
+
+  function updatePageFromScroll(): void {
+    const root = getShadowRoot();
+    if (!root) return;
+    const next = findClosestPageToCenter(root);
+    if (next !== pageIdx) {
+      pageIdx = next;
+      writeUrl(variant, next);
+    }
+  }
+
+  let scrollRaf = 0;
+  function onScroll(): void {
+    if (scrollRaf) return;
+    scrollRaf = requestAnimationFrame(() => {
+      scrollRaf = 0;
+      updatePageFromScroll();
+    });
   }
 
   function onPageClick(detail: {
@@ -257,16 +281,19 @@
       if (linked !== openPinId) openPinId = linked;
     };
     window.addEventListener('popstate', onPop);
+    window.addEventListener('scroll', onScroll, { passive: true });
     return () => {
       window.removeEventListener('popstate', onPop);
+      window.removeEventListener('scroll', onScroll);
+      if (scrollRaf) cancelAnimationFrame(scrollRaf);
       if (pinsUnsubscribe) pinsUnsubscribe();
       pinsUnsubscribe = null;
     };
   });
 </script>
 
-<main class="relative min-h-screen">
-  <header class="sticky top-0 z-10 border-b bg-white/90 px-4 py-3 backdrop-blur">
+<main class="relative min-h-screen bg-neutral-100">
+  <header class="sticky top-0 z-10 border-b border-neutral-200 bg-white/90 px-4 py-3 backdrop-blur">
     <div class="mx-auto flex max-w-6xl items-center gap-4">
       <a href="/" class="text-sm text-neutral-500 hover:text-neutral-900">← Home</a>
       <VariantSwitcher active={variant} onvariantchange={onVariantChange} />
@@ -278,14 +305,24 @@
     </div>
   </header>
 
-  <section class="mx-auto max-w-6xl px-0 py-4">
+  <DocumentFrame title={variantTitle} {pageCount} pageIndex={pageIdx}>
     <VariantRenderer
       bind:this={renderer}
       {variant}
       onready={onRendererReady}
       onpageclick={onPageClick}
     />
-  </section>
+  </DocumentFrame>
+
+  {#if pinStore.loading && pinStore.pins.length === 0}
+    <div
+      class="pointer-events-none fixed bottom-4 left-4 z-20 rounded-md border border-neutral-200 bg-white/95 px-3 py-1.5 text-xs text-neutral-500 shadow-sm"
+      data-testid="pins-loading"
+      aria-live="polite"
+    >
+      Loading pins…
+    </div>
+  {/if}
 
   <PinOverlay pins={pinStore.pins} {shadowRoot} onopen={openThread} />
 
