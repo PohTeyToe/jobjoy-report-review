@@ -413,14 +413,21 @@ export class PinStore {
     }
     if (type === 'INSERT' && row.variant && row.variant === this.activeVariant) {
       // Dedup: if realtime echo arrives before our dropPin INSERT response, swap temp id in place (else {#each} key set duplicates and crashes).
-      // Coord match relies on Postgres float8 preserving IEEE 754 round-trip; if we ever round coords, switch to an epsilon compare.
+      // Coords are stored as Postgres `real` (float4), which truncates the
+      // 64-bit float we send by ~1e-6. Strict === fails after roundtrip, so
+      // we match within an epsilon. Don't lower this below 1e-3 — clicks
+      // separated by less than 0.1% of page width would still be different
+      // pins (a page is hundreds of px wide; 0.1% is sub-pixel).
+      const COORD_EPSILON = 1e-3;
+      const closeEnough = (a: number, b: number | undefined): boolean =>
+        b !== undefined && Math.abs(a - b) < COORD_EPSILON;
       const matchTempIdx = this.pins.findIndex(
         (p) =>
           p.id.startsWith('temp-') &&
           p.variant === row.variant &&
           p.page_index === row.page_index &&
-          p.x_pct === row.x_pct &&
-          p.y_pct === row.y_pct &&
+          closeEnough(p.x_pct, row.x_pct) &&
+          closeEnough(p.y_pct, row.y_pct) &&
           p.reviewer_id === row.reviewer_id
       );
       if (matchTempIdx !== -1) {
