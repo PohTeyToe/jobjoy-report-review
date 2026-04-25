@@ -64,6 +64,31 @@ body {
   margin-top: 0;
 }
 
+/* Deep-link landing offset. When opening /review?variant=X&page=N directly
+   (cold load, no prior scroll), `scrollToPageIndex` calls `scrollIntoView({
+   block: 'start' })` on the matching .page. Without a scroll margin, the
+   target page top lands at viewport top — directly underneath the sticky
+   review header — so the heading is clipped. `scroll-margin-top` is the
+   browser-native fix: it pads the snap target so the page lands BELOW the
+   sticky bar instead of behind it.
+   Value chosen to clear the sticky review header (~56px) plus a little
+   breathing room. Variants like `impeccable` already have generous internal
+   padding-top on the page, so this stacks but doesn't visibly hurt.
+   Applied broadly so it covers headings on both the .page wrapper itself
+   and any first-child block a variant uses for its section title. */
+.page,
+.page > h1:first-child,
+.page > h2:first-child,
+.page > h3:first-child,
+.page > header:first-child,
+.page > section:first-child,
+[data-page-index],
+[data-page-index] > h1:first-child,
+[data-page-index] > h2:first-child,
+[data-page-index] > h3:first-child {
+  scroll-margin-top: 96px;
+}
+
 /* Image safety: a couple of variants set `max-width: none` on figures,
    which can blow past the page edge on narrow viewports. */
 img,
