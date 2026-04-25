@@ -3,5 +3,5 @@
   "outputDirectory": "build",
   "cleanUrls": true,
   "trailingSlash": false,
-  "rewrites": [{ "source": "/((?!_app/|favicon|variants/).*)", "destination": "/" }]
+  "rewrites": [{ "source": "/((?!_app/|favicon|variants/).+)", "destination": "/" }]
 }

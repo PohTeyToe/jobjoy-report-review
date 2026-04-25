@@ -10,9 +10,9 @@ const config = {
       strict: false
     }),
     // Use absolute asset paths so the SPA fallback (served at any deep URL
-    // via the Vercel rewrite below) loads its _app/ chunks correctly. With
-    // the default relative base, /admin/<secret> would try to load
-    // /admin/_app/... and 404.
+    // via the Vercel rewrite in `vercel.json`) loads its _app/ chunks
+    // correctly. With the default relative base, /admin/<secret> would try
+    // to load /admin/_app/... and 404.
     paths: { relative: false }
   }
 };
