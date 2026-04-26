@@ -19,7 +19,9 @@ const h = vi.hoisted(() => ({
   // deletePin first runs `from('comments').select().eq().order()` to
   // snapshot the thread for undo (per Claude review #3). The chain
   // resolves to whatever the test sets here.
-  commentSelectOrder: vi.fn()
+  commentSelectOrder: vi.fn(),
+  // restorePin now calls a SECURITY DEFINER RPC instead of direct inserts.
+  rpcCall: vi.fn()
 }));
 
 vi.mock('../../src/lib/supabase', () => {
@@ -44,7 +46,8 @@ vi.mock('../../src/lib/supabase', () => {
           };
         }
         return {};
-      })
+      }),
+      rpc: h.rpcCall
     }
   };
 });
@@ -72,6 +75,7 @@ describe('PinStore.deletePin / restorePin', () => {
     h.pinInsertCall.mockReset();
     h.commentSelectOrder.mockReset();
     h.commentInsertCall.mockReset();
+    h.rpcCall.mockReset();
     // Default: thread snapshot is empty.
     h.commentSelectOrder.mockResolvedValue({ data: [], error: null });
   });
@@ -139,54 +143,64 @@ describe('PinStore.deletePin / restorePin', () => {
     expect(store.activeThread).toBeNull();
   });
 
-  it('restorePin re-inserts the pin row + every comment from the snapshot', async () => {
+  it('restorePin invokes the restore_pin_with_comments RPC with the full snapshot', async () => {
     const store = createPinStore();
     const pin = makePin();
-    h.pinInsertCall.mockResolvedValueOnce({ error: null });
-    h.commentInsertCall.mockResolvedValueOnce({ error: null });
+    h.rpcCall.mockResolvedValueOnce({ data: pin.id, error: null });
 
-    await store.restorePin({
-      pin,
-      comments: [
-        {
-          id: 'c1',
-          pin_id: 'pin-1',
-          reviewer_id: 'me',
-          body: 'first',
-          created_at: '2026-04-26T00:00:00Z'
-        },
-        {
-          id: 'c2',
-          pin_id: 'pin-1',
-          reviewer_id: 'me',
-          body: 'second',
-          created_at: '2026-04-26T00:01:00Z'
-        }
-      ]
-    });
-    expect(h.pinInsertCall).toHaveBeenCalledTimes(1);
-    expect(h.commentInsertCall).toHaveBeenCalledTimes(1);
-    const insertedRows = h.commentInsertCall.mock.calls[0][0];
-    expect(insertedRows).toHaveLength(2);
+    const comments = [
+      {
+        id: 'c1',
+        pin_id: 'pin-1',
+        reviewer_id: 'me',
+        body: 'mine',
+        created_at: '2026-04-26T00:00:00Z'
+      },
+      {
+        id: 'c2',
+        pin_id: 'pin-1',
+        reviewer_id: 'someone-else',
+        body: 'cross-author reply',
+        created_at: '2026-04-26T00:01:00Z'
+      }
+    ];
+
+    await store.restorePin({ pin, comments });
+    expect(h.rpcCall).toHaveBeenCalledTimes(1);
+    const [fnName, args] = h.rpcCall.mock.calls[0];
+    expect(fnName).toBe('restore_pin_with_comments');
+    expect(args.pin.id).toBe(pin.id);
+    expect(args.pin.reviewer_id).toBe('me');
+    expect(args.comments).toHaveLength(2);
+    // Foreign-author row included verbatim — the SECURITY DEFINER RPC
+    // bypasses the `reviewer_id = auth.uid()` RLS check.
+    expect(args.comments[1].reviewer_id).toBe('someone-else');
     expect(store.pins.find((p) => p.id === pin.id)).toBeTruthy();
-  });
-
-  it('restorePin skips the comment insert when the snapshot has none', async () => {
-    const store = createPinStore();
-    const pin = makePin();
-    h.pinInsertCall.mockResolvedValueOnce({ error: null });
-
-    await store.restorePin({ pin, comments: [] });
-    expect(h.pinInsertCall).toHaveBeenCalledTimes(1);
+    // Direct inserts are no longer used.
+    expect(h.pinInsertCall).not.toHaveBeenCalled();
     expect(h.commentInsertCall).not.toHaveBeenCalled();
   });
 
-  it('restorePin surfaces pin insert errors', async () => {
+  it('restorePin sends an empty comments array when the snapshot has none', async () => {
     const store = createPinStore();
     const pin = makePin();
-    h.pinInsertCall.mockResolvedValueOnce({ error: { message: 'fk violation' } });
+    h.rpcCall.mockResolvedValueOnce({ data: pin.id, error: null });
 
-    await expect(store.restorePin({ pin, comments: [] })).rejects.toThrow(/fk violation/);
+    await store.restorePin({ pin, comments: [] });
+    expect(h.rpcCall).toHaveBeenCalledTimes(1);
+    const [, args] = h.rpcCall.mock.calls[0];
+    expect(args.comments).toEqual([]);
+  });
+
+  it('restorePin surfaces RPC errors (e.g. caller is not pin author)', async () => {
+    const store = createPinStore();
+    const pin = makePin();
+    h.rpcCall.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'restore_pin_with_comments: caller is not the pin author' }
+    });
+
+    await expect(store.restorePin({ pin, comments: [] })).rejects.toThrow(/not the pin author/);
   });
 });
 

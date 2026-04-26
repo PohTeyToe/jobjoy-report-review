@@ -456,23 +456,22 @@ export class PinStore {
   }
 
   /**
-   * Restore a pin previously removed via deletePin. Re-inserts the pin row
-   * preserving its original id + coords + created_at so deep-link URLs
-   * (?pin=<id>) keep working post-undo, then re-inserts every comment that
-   * was on the thread before the cascade fired.
+   * Restore a pin previously removed via deletePin. Delegates to a
+   * SECURITY DEFINER RPC (`restore_pin_with_comments`) so we can re-insert
+   * comments authored by *other* reviewers — direct INSERTs would be
+   * blocked by RLS (`reviewer_id = auth.uid()`).
    *
-   * The pin row's reviewer_id MUST be the caller's auth.uid() (RLS).
-   * Comments authored by OTHER reviewers cannot be restored by this
-   * caller — RLS rejects an insert where reviewer_id != auth.uid(). The
-   * function logs and skips those rows but still restores the pin and
-   * the caller's own replies. In practice the trash chip is gated to
-   * the pin author, so the only foreign comments are replies from
-   * other reviewers; those are unrecoverable from the deleting user's
-   * session.
+   * The RPC validates the caller is the original pin author server-side
+   * (input pin.reviewer_id must equal auth.uid()), so a malicious caller
+   * can't use this path to inject rows on someone else's pin.
+   *
+   * The pin id, coords, created_at, and every comment id + reviewer_id are
+   * preserved, so deep-link URLs (?pin=<id>) keep working post-undo and
+   * thread ordering survives.
    */
   async restorePin(snapshot: { pin: Pin; comments: ThreadComment[] }): Promise<void> {
     const { pin, comments } = snapshot;
-    const { error } = await supabase.from('pins').insert({
+    const pinPayload = {
       id: pin.id,
       variant: pin.variant,
       page_index: pin.page_index,
@@ -481,30 +480,27 @@ export class PinStore {
       reviewer_id: pin.reviewer_id,
       resolved_at: pin.resolved_at,
       created_at: pin.created_at
+    };
+    // Note: deliberately NOT sending `pin_id` for each comment. The RPC
+    // forces every comment row's pin_id to the just-inserted pin id,
+    // ignoring whatever the client sends. Including it here would just be
+    // misleading noise (per Claude review #4 + the security fix in #1 —
+    // the SQL owns the pin association, not the client). `reviewer_id` IS
+    // sent intentionally so foreign-author replies survive Undo.
+    const commentsPayload = comments.map((c) => ({
+      id: c.id,
+      reviewer_id: c.reviewer_id,
+      body: c.body,
+      created_at: c.created_at
+    }));
+
+    const { error } = await supabase.rpc('restore_pin_with_comments', {
+      pin: pinPayload,
+      comments: commentsPayload
     });
 
     if (error) {
       throw new Error(error.message ?? 'Restore failed');
-    }
-
-    // Re-insert comments. Foreign-author rows will hit RLS and silently
-    // fail (count=0) — log and continue rather than aborting the whole
-    // restore. The pin is back even if some replies aren't.
-    if (comments.length > 0) {
-      const restorableComments = comments.map((c) => ({
-        id: c.id,
-        pin_id: c.pin_id,
-        reviewer_id: c.reviewer_id,
-        body: c.body,
-        created_at: c.created_at
-      }));
-      const { error: commentErr } = await supabase.from('comments').insert(restorableComments);
-      if (commentErr) {
-        console.warn(
-          '[pin-store] some comments could not be restored (likely cross-author RLS):',
-          commentErr.message
-        );
-      }
     }
 
     // Optimistic local re-add — realtime echo will be deduped by id match.
