@@ -6,10 +6,17 @@
   type Props = {
     pins: Pin[];
     shadowRoot: ShadowRoot | null;
+    /**
+     * Currently-signed-in reviewer id. Used to gate the trash chip on each
+     * marker — only the author sees it. Pass `null` for unauthenticated
+     * surfaces (e.g. admin secret URL with no NameModal flow).
+     */
+    currentReviewerId?: string | null;
     onopen?: (id: string) => void;
+    ondelete?: (id: string) => void;
   };
 
-  const { pins, shadowRoot, onopen }: Props = $props();
+  const { pins, shadowRoot, currentReviewerId = null, onopen, ondelete }: Props = $props();
 
   type Positioned = { pin: Pin; left: number; top: number; index: number };
 
@@ -101,7 +108,9 @@
         index={p.index}
         isOptimistic={p.pin.isOptimistic}
         isResolved={p.pin.resolved_at != null}
+        canDelete={!!currentReviewerId && p.pin.reviewer_id === currentReviewerId}
         {onopen}
+        {ondelete}
       />
     </div>
   {/each}

@@ -389,6 +389,146 @@ export class PinStore {
   }
 
   /**
+   * Author-only pin delete. Optimistically removes the pin from the local
+   * list (and closes the active thread if it points at this pin), then
+   * issues a `delete` against Supabase. RLS gates this server-side: a
+   * non-author's delete returns 0 rows but no error, so we re-check
+   * `count` and roll back the optimistic removal on a no-op.
+   *
+   * Returns the snapshot needed to restore the pin (used by the undo flow).
+   */
+  async deletePin(pinId: string): Promise<Pin | null> {
+    const snapshot = this.pins.find((p) => p.id === pinId) ?? null;
+    if (!snapshot) return null;
+
+    // Optimistic removal.
+    this.pins = this.pins.filter((p) => p.id !== pinId);
+    if (this.activeThread && this.activeThread.pin.id === pinId) {
+      this.activeThread = null;
+    }
+
+    const { error, count } = await supabase.from('pins').delete({ count: 'exact' }).eq('id', pinId);
+
+    if (error || count === 0) {
+      // Roll back — RLS rejected (count=0) or transport failed.
+      this.pins = [...this.pins, snapshot].sort((a, b) => a.created_at.localeCompare(b.created_at));
+      throw new Error(error?.message ?? 'Delete denied (not author)');
+    }
+
+    return snapshot;
+  }
+
+  /**
+   * Restore a pin previously removed via deletePin. Re-inserts the row
+   * preserving its original id + coords + created_at so deep-link URLs
+   * (?pin=<id>) keep working post-undo. The reviewer_id MUST be the
+   * caller's auth.uid() — RLS enforces this on insert.
+   */
+  async restorePin(pin: Pin): Promise<void> {
+    const { error } = await supabase.from('pins').insert({
+      id: pin.id,
+      variant: pin.variant,
+      page_index: pin.page_index,
+      x_pct: pin.x_pct,
+      y_pct: pin.y_pct,
+      reviewer_id: pin.reviewer_id,
+      resolved_at: pin.resolved_at,
+      created_at: pin.created_at
+    });
+
+    if (error) {
+      throw new Error(error.message ?? 'Restore failed');
+    }
+
+    // Optimistic local re-add — realtime echo will be deduped by id match.
+    if (!this.pins.some((p) => p.id === pin.id)) {
+      this.pins = [...this.pins, { ...pin, isOptimistic: false }].sort((a, b) =>
+        a.created_at.localeCompare(b.created_at)
+      );
+    }
+  }
+
+  /**
+   * Author-only comment delete. Mirror of deletePin.
+   *
+   * Removes from the active thread synchronously, then issues the network
+   * delete. Returns the original comment so the caller can restore it.
+   */
+  async deleteComment(commentId: string): Promise<ThreadComment | null> {
+    const thread = this.activeThread;
+    if (!thread) return null;
+    const snapshot = thread.comments.find((c) => c.id === commentId) ?? null;
+    if (!snapshot) return null;
+
+    // Optimistic removal.
+    this.activeThread = {
+      ...thread,
+      comments: thread.comments.filter((c) => c.id !== commentId)
+    };
+
+    const { error, count } = await supabase
+      .from('comments')
+      .delete({ count: 'exact' })
+      .eq('id', commentId);
+
+    if (error || count === 0) {
+      // Roll back.
+      const current = this.activeThread;
+      if (current && current.pin.id === thread.pin.id) {
+        this.activeThread = {
+          ...current,
+          comments: [...current.comments, snapshot].sort((a, b) =>
+            a.created_at.localeCompare(b.created_at)
+          )
+        };
+      }
+      throw new Error(error?.message ?? 'Delete denied (not author)');
+    }
+
+    return snapshot;
+  }
+
+  /**
+   * Restore a comment previously removed via deleteComment. Like restorePin,
+   * preserves the original id + created_at so the thread ordering survives.
+   */
+  async restoreComment(comment: ThreadComment): Promise<void> {
+    const { error } = await supabase.from('comments').insert({
+      id: comment.id,
+      pin_id: comment.pin_id,
+      reviewer_id: comment.reviewer_id,
+      body: comment.body,
+      created_at: comment.created_at
+    });
+
+    if (error) {
+      throw new Error(error.message ?? 'Restore failed');
+    }
+
+    if (this.activeThread && this.activeThread.pin.id === comment.pin_id) {
+      const exists = this.activeThread.comments.some((c) => c.id === comment.id);
+      if (!exists) {
+        this.activeThread = {
+          ...this.activeThread,
+          comments: [...this.activeThread.comments, { ...comment, isOptimistic: false }].sort(
+            (a, b) => a.created_at.localeCompare(b.created_at)
+          )
+        };
+      }
+    }
+  }
+
+  /** Apply a realtime DELETE on a comment to the active thread. */
+  applyRealtimeCommentDelete(commentId: string): void {
+    if (!this.activeThread) return;
+    if (!this.activeThread.comments.some((c) => c.id === commentId)) return;
+    this.activeThread = {
+      ...this.activeThread,
+      comments: this.activeThread.comments.filter((c) => c.id !== commentId)
+    };
+  }
+
+  /**
    * Apply a realtime pin event to the local list. Idempotent: an INSERT for
    * a pin that already exists (because our optimistic write echoed back) is
    * a no-op.
