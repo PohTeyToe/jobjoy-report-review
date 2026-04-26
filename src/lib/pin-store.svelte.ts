@@ -395,11 +395,46 @@ export class PinStore {
    * non-author's delete returns 0 rows but no error, so we re-check
    * `count` and roll back the optimistic removal on a no-op.
    *
-   * Returns the snapshot needed to restore the pin (used by the undo flow).
+   * Returns a snapshot containing the pin row AND all of its comments so
+   * the undo flow can restore the full thread. The cascade on
+   * `pins -> comments` deletes every comment when the pin row is removed,
+   * so without snapshotting them up front Undo would silently drop every
+   * reply and hand the user back an empty thread (per Claude review #3).
    */
-  async deletePin(pinId: string): Promise<Pin | null> {
-    const snapshot = this.pins.find((p) => p.id === pinId) ?? null;
-    if (!snapshot) return null;
+  async deletePin(pinId: string): Promise<{ pin: Pin; comments: ThreadComment[] } | null> {
+    const pinSnapshot = this.pins.find((p) => p.id === pinId) ?? null;
+    if (!pinSnapshot) return null;
+
+    // Pull comments BEFORE the delete — once the cascade fires they're
+    // gone from the DB and we can't reconstruct them.
+    const { data: commentRows, error: fetchErr } = await supabase
+      .from('comments')
+      .select('id, pin_id, reviewer_id, body, created_at, reviewers ( name )')
+      .eq('pin_id', pinId)
+      .order('created_at', { ascending: true });
+
+    if (fetchErr) {
+      throw new Error(fetchErr.message ?? 'failed to snapshot thread for undo');
+    }
+
+    type CommentSnapshotRow = {
+      id: string;
+      pin_id: string;
+      reviewer_id: string;
+      body: string;
+      created_at: string;
+      reviewers?: { name?: string } | null;
+    };
+    const commentSnapshots: ThreadComment[] = ((commentRows ?? []) as CommentSnapshotRow[]).map(
+      (c) => ({
+        id: c.id,
+        pin_id: c.pin_id,
+        reviewer_id: c.reviewer_id,
+        reviewer_name: c.reviewers?.name,
+        body: c.body,
+        created_at: c.created_at
+      })
+    );
 
     // Optimistic removal.
     this.pins = this.pins.filter((p) => p.id !== pinId);
@@ -411,20 +446,32 @@ export class PinStore {
 
     if (error || count === 0) {
       // Roll back — RLS rejected (count=0) or transport failed.
-      this.pins = [...this.pins, snapshot].sort((a, b) => a.created_at.localeCompare(b.created_at));
+      this.pins = [...this.pins, pinSnapshot].sort((a, b) =>
+        a.created_at.localeCompare(b.created_at)
+      );
       throw new Error(error?.message ?? 'Delete denied (not author)');
     }
 
-    return snapshot;
+    return { pin: pinSnapshot, comments: commentSnapshots };
   }
 
   /**
-   * Restore a pin previously removed via deletePin. Re-inserts the row
+   * Restore a pin previously removed via deletePin. Re-inserts the pin row
    * preserving its original id + coords + created_at so deep-link URLs
-   * (?pin=<id>) keep working post-undo. The reviewer_id MUST be the
-   * caller's auth.uid() — RLS enforces this on insert.
+   * (?pin=<id>) keep working post-undo, then re-inserts every comment that
+   * was on the thread before the cascade fired.
+   *
+   * The pin row's reviewer_id MUST be the caller's auth.uid() (RLS).
+   * Comments authored by OTHER reviewers cannot be restored by this
+   * caller — RLS rejects an insert where reviewer_id != auth.uid(). The
+   * function logs and skips those rows but still restores the pin and
+   * the caller's own replies. In practice the trash chip is gated to
+   * the pin author, so the only foreign comments are replies from
+   * other reviewers; those are unrecoverable from the deleting user's
+   * session.
    */
-  async restorePin(pin: Pin): Promise<void> {
+  async restorePin(snapshot: { pin: Pin; comments: ThreadComment[] }): Promise<void> {
+    const { pin, comments } = snapshot;
     const { error } = await supabase.from('pins').insert({
       id: pin.id,
       variant: pin.variant,
@@ -438,6 +485,26 @@ export class PinStore {
 
     if (error) {
       throw new Error(error.message ?? 'Restore failed');
+    }
+
+    // Re-insert comments. Foreign-author rows will hit RLS and silently
+    // fail (count=0) — log and continue rather than aborting the whole
+    // restore. The pin is back even if some replies aren't.
+    if (comments.length > 0) {
+      const restorableComments = comments.map((c) => ({
+        id: c.id,
+        pin_id: c.pin_id,
+        reviewer_id: c.reviewer_id,
+        body: c.body,
+        created_at: c.created_at
+      }));
+      const { error: commentErr } = await supabase.from('comments').insert(restorableComments);
+      if (commentErr) {
+        console.warn(
+          '[pin-store] some comments could not be restored (likely cross-author RLS):',
+          commentErr.message
+        );
+      }
     }
 
     // Optimistic local re-add — realtime echo will be deduped by id match.
@@ -472,7 +539,13 @@ export class PinStore {
       .eq('id', commentId);
 
     if (error || count === 0) {
-      // Roll back.
+      // Roll back. If the thread is still open, restore visually. If the
+      // user has since closed it (or the pin was deleted out from under
+      // us), we don't have anywhere to put the comment back in the UI —
+      // but per Claude review #4, surfacing the failure as a thrown error
+      // ensures the caller (handleCommentDelete in /review) doesn't show
+      // a misleading "deleted" toast for a row the DB still has. The
+      // user reloading will reconcile.
       const current = this.activeThread;
       if (current && current.pin.id === thread.pin.id) {
         this.activeThread = {

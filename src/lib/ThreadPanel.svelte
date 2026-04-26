@@ -3,6 +3,7 @@
   import type { PinStore } from './pin-store.svelte';
   import type { Identity } from './identity';
   import { subscribeCommentsForThread, type CommentRow } from './realtime';
+  import TrashIcon from './TrashIcon.svelte';
 
   type Props = {
     pinId: string | null;
@@ -251,18 +252,7 @@
                 class="shrink-0 rounded-md p-1 text-neutral-400 hover:bg-red-50 hover:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
                 onclick={() => ondeletecomment?.(c.id)}
               >
-                <svg
-                  viewBox="0 0 16 16"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1.6"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  class="h-3.5 w-3.5"
-                  aria-hidden="true"
-                >
-                  <path d="M3 4h10M6.5 4V2.5h3V4M5 4l.5 8a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1L11 4" />
-                </svg>
+                <TrashIcon />
               </button>
             {/if}
           </div>

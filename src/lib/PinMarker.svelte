@@ -1,4 +1,6 @@
 <script lang="ts">
+  import TrashIcon from './TrashIcon.svelte';
+
   type Props = {
     id: string;
     index: number;
@@ -84,19 +86,7 @@
       onclick={handleDelete}
       onkeydown={handleDeleteKeydown}
     >
-      <!-- Heroicons mini "trash" path, scaled to fit the chip. -->
-      <svg
-        viewBox="0 0 16 16"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.6"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        class="h-2.5 w-2.5"
-        aria-hidden="true"
-      >
-        <path d="M3 4h10M6.5 4V2.5h3V4M5 4l.5 8a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1L11 4" />
-      </svg>
+      <TrashIcon class="h-2.5 w-2.5" />
     </button>
   {/if}
 </div>

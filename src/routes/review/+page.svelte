@@ -284,9 +284,13 @@
    * the visibility check on the trash chip is UI-only — even if a curl
    * spoofer hides it, the DELETE returns 0 rows and the optimistic removal
    * rolls back via deletePin().
+   *
+   * The snapshot includes every comment on the thread (cascade fires when
+   * the pin row dies), so Undo restores both the pin and the replies. Per
+   * Claude review #3.
    */
   async function handlePinDelete(pinId: string): Promise<void> {
-    let snapshot: Pin | null = null;
+    let snapshot: { pin: Pin; comments: ThreadComment[] } | null = null;
     try {
       snapshot = await pinStore.deletePin(pinId);
     } catch (err) {
@@ -294,20 +298,25 @@
       return;
     }
     if (!snapshot) return;
-    const pin = snapshot;
+    const captured = snapshot;
+    const replyCount = captured.comments.length - 1; // first comment = the pin body
+    const message =
+      replyCount > 0
+        ? `Pin and ${replyCount} ${replyCount === 1 ? 'reply' : 'replies'} deleted`
+        : 'Pin deleted';
     showUndo(
-      'Pin deleted',
+      message,
       () => {
         void (async () => {
           try {
-            await pinStore.restorePin(pin);
+            await pinStore.restorePin(captured);
           } catch (err) {
             console.error('[review] restore pin failed:', err);
           }
         })();
       },
       () => {
-        // Auto-dismiss = permanent. Nothing to do — the row is already gone.
+        // Auto-dismiss = permanent. Nothing to do — rows already gone.
       }
     );
   }
@@ -474,10 +483,20 @@
   {/if}
 
   {#if undoState}
-    <UndoToast
-      message={undoState.message}
-      onUndo={undoState.onUndo}
-      onDismiss={undoState.onDismiss}
-    />
+    <!--
+      {#key} forces destroy + remount of UndoToast when undoState.key
+      changes. Without it, Svelte 5 updates the component in place — the
+      stale setTimeout from the previous toast keeps running with whatever
+      time it had left, and the second toast inherits that countdown.
+      Worst case: a delete at t=4.9s gives the user ~100ms to undo.
+      Per Claude review #1.
+    -->
+    {#key undoState.key}
+      <UndoToast
+        message={undoState.message}
+        onUndo={undoState.onUndo}
+        onDismiss={undoState.onDismiss}
+      />
+    {/key}
   {/if}
 </main>

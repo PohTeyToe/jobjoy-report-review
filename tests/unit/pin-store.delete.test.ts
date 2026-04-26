@@ -8,10 +8,19 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
  * optimistic remove + RLS-aware rollback semantics described in the store.
  */
 
-const pinDeleteEq = vi.fn();
-const pinInsertCall = vi.fn();
-const commentDeleteEq = vi.fn();
-const commentInsertCall = vi.fn();
+// Hoisted shared spies — vi.mock factories run before top-level
+// statements, so any references inside the factory must come from
+// vi.hoisted.
+const h = vi.hoisted(() => ({
+  pinDeleteEq: vi.fn(),
+  pinInsertCall: vi.fn(),
+  commentDeleteEq: vi.fn(),
+  commentInsertCall: vi.fn(),
+  // deletePin first runs `from('comments').select().eq().order()` to
+  // snapshot the thread for undo (per Claude review #3). The chain
+  // resolves to whatever the test sets here.
+  commentSelectOrder: vi.fn()
+}));
 
 vi.mock('../../src/lib/supabase', () => {
   return {
@@ -19,14 +28,19 @@ vi.mock('../../src/lib/supabase', () => {
       from: vi.fn((table: string) => {
         if (table === 'pins') {
           return {
-            delete: vi.fn(() => ({ eq: pinDeleteEq })),
-            insert: pinInsertCall
+            delete: vi.fn(() => ({ eq: h.pinDeleteEq })),
+            insert: h.pinInsertCall
           };
         }
         if (table === 'comments') {
           return {
-            delete: vi.fn(() => ({ eq: commentDeleteEq })),
-            insert: commentInsertCall
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                order: h.commentSelectOrder
+              }))
+            })),
+            delete: vi.fn(() => ({ eq: h.commentDeleteEq })),
+            insert: h.commentInsertCall
           };
         }
         return {};
@@ -54,19 +68,40 @@ function makePin(overrides: Partial<Pin> = {}): Pin {
 
 describe('PinStore.deletePin / restorePin', () => {
   beforeEach(() => {
-    pinDeleteEq.mockReset();
-    pinInsertCall.mockReset();
+    h.pinDeleteEq.mockReset();
+    h.pinInsertCall.mockReset();
+    h.commentSelectOrder.mockReset();
+    h.commentInsertCall.mockReset();
+    // Default: thread snapshot is empty.
+    h.commentSelectOrder.mockResolvedValue({ data: [], error: null });
   });
 
-  it('optimistically removes the pin and resolves with the snapshot', async () => {
+  it('optimistically removes the pin and resolves with a {pin, comments} snapshot', async () => {
     const store = createPinStore();
     const pin = makePin();
     store.__setPinsForTests([pin]);
 
-    pinDeleteEq.mockResolvedValueOnce({ error: null, count: 1 });
+    h.commentSelectOrder.mockResolvedValueOnce({
+      data: [
+        {
+          id: 'c1',
+          pin_id: 'pin-1',
+          reviewer_id: 'me',
+          body: 'first',
+          created_at: '2026-04-26T00:00:00Z',
+          reviewers: { name: 'Alice' }
+        }
+      ],
+      error: null
+    });
+    h.pinDeleteEq.mockResolvedValueOnce({ error: null, count: 1 });
 
     const snap = await store.deletePin('pin-1');
-    expect(snap).toEqual(expect.objectContaining({ id: 'pin-1' }));
+    expect(snap).not.toBeNull();
+    expect(snap!.pin.id).toBe('pin-1');
+    expect(snap!.comments).toHaveLength(1);
+    expect(snap!.comments[0].id).toBe('c1');
+    expect(snap!.comments[0].reviewer_name).toBe('Alice');
     expect(store.pins).toHaveLength(0);
   });
 
@@ -75,19 +110,19 @@ describe('PinStore.deletePin / restorePin', () => {
     const pin = makePin();
     store.__setPinsForTests([pin]);
 
-    pinDeleteEq.mockResolvedValueOnce({ error: null, count: 0 });
+    h.pinDeleteEq.mockResolvedValueOnce({ error: null, count: 0 });
 
     await expect(store.deletePin('pin-1')).rejects.toThrow(/not author/i);
     expect(store.pins).toHaveLength(1);
     expect(store.pins[0].id).toBe('pin-1');
   });
 
-  it('rolls back when transport errors', async () => {
+  it('rolls back when transport errors on the delete itself', async () => {
     const store = createPinStore();
     const pin = makePin();
     store.__setPinsForTests([pin]);
 
-    pinDeleteEq.mockResolvedValueOnce({ error: { message: 'network down' }, count: null });
+    h.pinDeleteEq.mockResolvedValueOnce({ error: { message: 'network down' }, count: null });
 
     await expect(store.deletePin('pin-1')).rejects.toThrow(/network down/);
     expect(store.pins).toHaveLength(1);
@@ -99,34 +134,66 @@ describe('PinStore.deletePin / restorePin', () => {
     store.__setPinsForTests([pin]);
     store.__setActiveThreadForTests({ pin, comments: [] });
 
-    pinDeleteEq.mockResolvedValueOnce({ error: null, count: 1 });
+    h.pinDeleteEq.mockResolvedValueOnce({ error: null, count: 1 });
     await store.deletePin('pin-1');
     expect(store.activeThread).toBeNull();
   });
 
-  it('restorePin re-inserts and re-adds to the local list', async () => {
+  it('restorePin re-inserts the pin row + every comment from the snapshot', async () => {
     const store = createPinStore();
     const pin = makePin();
-    pinInsertCall.mockResolvedValueOnce({ error: null });
+    h.pinInsertCall.mockResolvedValueOnce({ error: null });
+    h.commentInsertCall.mockResolvedValueOnce({ error: null });
 
-    await store.restorePin(pin);
-    expect(pinInsertCall).toHaveBeenCalledTimes(1);
+    await store.restorePin({
+      pin,
+      comments: [
+        {
+          id: 'c1',
+          pin_id: 'pin-1',
+          reviewer_id: 'me',
+          body: 'first',
+          created_at: '2026-04-26T00:00:00Z'
+        },
+        {
+          id: 'c2',
+          pin_id: 'pin-1',
+          reviewer_id: 'me',
+          body: 'second',
+          created_at: '2026-04-26T00:01:00Z'
+        }
+      ]
+    });
+    expect(h.pinInsertCall).toHaveBeenCalledTimes(1);
+    expect(h.commentInsertCall).toHaveBeenCalledTimes(1);
+    const insertedRows = h.commentInsertCall.mock.calls[0][0];
+    expect(insertedRows).toHaveLength(2);
     expect(store.pins.find((p) => p.id === pin.id)).toBeTruthy();
   });
 
-  it('restorePin surfaces insert errors', async () => {
+  it('restorePin skips the comment insert when the snapshot has none', async () => {
     const store = createPinStore();
     const pin = makePin();
-    pinInsertCall.mockResolvedValueOnce({ error: { message: 'fk violation' } });
+    h.pinInsertCall.mockResolvedValueOnce({ error: null });
 
-    await expect(store.restorePin(pin)).rejects.toThrow(/fk violation/);
+    await store.restorePin({ pin, comments: [] });
+    expect(h.pinInsertCall).toHaveBeenCalledTimes(1);
+    expect(h.commentInsertCall).not.toHaveBeenCalled();
+  });
+
+  it('restorePin surfaces pin insert errors', async () => {
+    const store = createPinStore();
+    const pin = makePin();
+    h.pinInsertCall.mockResolvedValueOnce({ error: { message: 'fk violation' } });
+
+    await expect(store.restorePin({ pin, comments: [] })).rejects.toThrow(/fk violation/);
   });
 });
 
 describe('PinStore.deleteComment / restoreComment', () => {
   beforeEach(() => {
-    commentDeleteEq.mockReset();
-    commentInsertCall.mockReset();
+    h.commentDeleteEq.mockReset();
+    h.commentInsertCall.mockReset();
   });
 
   function seedThread(): Thread {
@@ -154,7 +221,7 @@ describe('PinStore.deleteComment / restoreComment', () => {
   it('removes a comment optimistically and returns it', async () => {
     const store = createPinStore();
     store.__setActiveThreadForTests(seedThread());
-    commentDeleteEq.mockResolvedValueOnce({ error: null, count: 1 });
+    h.commentDeleteEq.mockResolvedValueOnce({ error: null, count: 1 });
 
     const snap = await store.deleteComment('c1');
     expect(snap?.id).toBe('c1');
@@ -164,7 +231,7 @@ describe('PinStore.deleteComment / restoreComment', () => {
   it('rolls back on RLS rejection', async () => {
     const store = createPinStore();
     store.__setActiveThreadForTests(seedThread());
-    commentDeleteEq.mockResolvedValueOnce({ error: null, count: 0 });
+    h.commentDeleteEq.mockResolvedValueOnce({ error: null, count: 0 });
 
     await expect(store.deleteComment('c1')).rejects.toThrow(/not author/i);
     expect(store.activeThread?.comments.map((c) => c.id)).toEqual(['c1', 'c2']);
@@ -174,7 +241,7 @@ describe('PinStore.deleteComment / restoreComment', () => {
     const store = createPinStore();
     const snap = await store.deleteComment('nope');
     expect(snap).toBeNull();
-    expect(commentDeleteEq).not.toHaveBeenCalled();
+    expect(h.commentDeleteEq).not.toHaveBeenCalled();
   });
 
   it('restoreComment re-inserts and re-adds to the active thread', async () => {
@@ -184,10 +251,10 @@ describe('PinStore.deleteComment / restoreComment', () => {
       ...thread,
       comments: [thread.comments[1]] // c2 only
     });
-    commentInsertCall.mockResolvedValueOnce({ error: null });
+    h.commentInsertCall.mockResolvedValueOnce({ error: null });
 
     await store.restoreComment(thread.comments[0]);
-    expect(commentInsertCall).toHaveBeenCalledTimes(1);
+    expect(h.commentInsertCall).toHaveBeenCalledTimes(1);
     expect(store.activeThread?.comments.map((c) => c.id).sort()).toEqual(['c1', 'c2']);
   });
 
