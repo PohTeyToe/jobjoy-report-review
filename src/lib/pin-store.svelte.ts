@@ -481,9 +481,14 @@ export class PinStore {
       resolved_at: pin.resolved_at,
       created_at: pin.created_at
     };
+    // Note: deliberately NOT sending `pin_id` for each comment. The RPC
+    // forces every comment row's pin_id to the just-inserted pin id,
+    // ignoring whatever the client sends. Including it here would just be
+    // misleading noise (per Claude review #4 + the security fix in #1 —
+    // the SQL owns the pin association, not the client). `reviewer_id` IS
+    // sent intentionally so foreign-author replies survive Undo.
     const commentsPayload = comments.map((c) => ({
       id: c.id,
-      pin_id: c.pin_id,
       reviewer_id: c.reviewer_id,
       body: c.body,
       created_at: c.created_at

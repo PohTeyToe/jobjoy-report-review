@@ -62,19 +62,37 @@ begin
     nullif(pin->>'resolved_at', '')::timestamptz,
     coalesce(nullif(pin->>'created_at', '')::timestamptz, now())
   )
+  -- Idempotent on rapid double-undo: the second call lands on an existing
+  -- row instead of raising a unique-constraint error. RETURNING is null on
+  -- conflict, so we fall back to the input id below.
+  on conflict (id) do nothing
   returning id into pin_id;
 
+  if pin_id is null then
+    pin_id := nullif(pin->>'id', '')::uuid;
+  end if;
+
   if comments is not null and jsonb_typeof(comments) = 'array' then
+    -- Use the server-side pin_id for every comment, ignoring any pin_id
+    -- the client supplied. Without this, an authenticated caller (who
+    -- legitimately owns the pin they're "restoring") could inject
+    -- arbitrary comment rows onto someone else's pin thread by setting
+    -- comments[i].pin_id to a foreign pin's UUID. The auth guard above
+    -- only validates the pin row, not each comment's pin_id.
+    -- (Per Claude review #1.)
     insert into design_review.comments (
       id, pin_id, reviewer_id, body, created_at
     )
     select
       nullif(c->>'id', '')::uuid,
-      coalesce(nullif(c->>'pin_id', '')::uuid, pin_id),
+      pin_id,
       nullif(c->>'reviewer_id', '')::uuid,
       c->>'body',
       coalesce(nullif(c->>'created_at', '')::timestamptz, now())
-    from jsonb_array_elements(comments) as c;
+    from jsonb_array_elements(comments) as c
+    -- Same idempotency rationale as the pin insert above: a rapid
+    -- double-undo should be a no-op, not an error toast.
+    on conflict (id) do nothing;
   end if;
 
   return pin_id;
