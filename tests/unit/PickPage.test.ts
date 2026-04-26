@@ -2,11 +2,13 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, cleanup, fireEvent, waitFor } from '@testing-library/svelte';
 
 // Wire identity to a known reviewer so the page skips the modal.
+// `getIdentity` is now async (returns a Promise<Identity | null>).
 vi.mock('../../src/lib/identity', () => {
   return {
-    getIdentity: () => ({ id: 'rev-pp-1', name: 'Tester' }),
+    getIdentity: vi.fn().mockResolvedValue({ id: 'rev-pp-1', name: 'Tester' }),
     bumpLastSeen: vi.fn().mockResolvedValue(undefined),
-    setIdentity: vi.fn()
+    setIdentity: vi.fn(),
+    ensureSession: vi.fn().mockResolvedValue('rev-pp-1')
   };
 });
 
@@ -175,6 +177,9 @@ describe('PickPage', () => {
     await waitFor(() =>
       expect(container.querySelectorAll('[data-testid="pick-card"]').length).toBe(VARIANTS.length)
     );
+    // Wait for the async getIdentity to land — the reviewer-name node only
+    // renders once `identity` is non-null.
+    await waitFor(() => expect(getByTestId('reviewer-name')).toBeTruthy());
 
     const submitBtn = getByTestId('pick-submit') as HTMLButtonElement;
     await fireEvent.click(submitBtn);

@@ -47,4 +47,40 @@ describe('PinMarker', () => {
     });
     expect(getByTestId('pin-marker').getAttribute('data-resolved')).toBeNull();
   });
+
+  it('hides the trash chip by default (canDelete=false)', () => {
+    const { queryByTestId } = render(PinMarker, {
+      props: { id: 'pin-x', index: 6 }
+    });
+    expect(queryByTestId('pin-delete')).toBeNull();
+  });
+
+  it('shows the trash chip when canDelete=true and not optimistic', async () => {
+    const ondelete = vi.fn();
+    const { getByTestId } = render(PinMarker, {
+      props: { id: 'pin-y', index: 7, canDelete: true, ondelete }
+    });
+    const chip = getByTestId('pin-delete');
+    expect(chip).toBeTruthy();
+    await fireEvent.click(chip);
+    expect(ondelete).toHaveBeenCalledWith('pin-y');
+  });
+
+  it('hides the trash chip while optimistic, even when canDelete=true', () => {
+    const { queryByTestId } = render(PinMarker, {
+      props: { id: 'pin-z', index: 8, canDelete: true, isOptimistic: true }
+    });
+    expect(queryByTestId('pin-delete')).toBeNull();
+  });
+
+  it('clicking the trash chip does NOT trigger onopen (stopPropagation)', async () => {
+    const onopen = vi.fn();
+    const ondelete = vi.fn();
+    const { getByTestId } = render(PinMarker, {
+      props: { id: 'pin-w', index: 9, canDelete: true, onopen, ondelete }
+    });
+    await fireEvent.click(getByTestId('pin-delete'));
+    expect(ondelete).toHaveBeenCalledTimes(1);
+    expect(onopen).not.toHaveBeenCalled();
+  });
 });

@@ -58,14 +58,20 @@ describe('realtime subscriptions', () => {
     expect(removed).toHaveLength(1);
   });
 
-  it('subscribeCommentsForThread filters on pin_id and forwards INSERT events', () => {
+  it('subscribeCommentsForThread registers INSERT + DELETE handlers filtered on pin_id', () => {
     const cb = vi.fn();
     const off = subscribeCommentsForThread('pin-xyz', cb);
-    expect(onCalls).toHaveLength(1);
-    expect(onCalls[0].cfg.filter).toBe('pin_id=eq.pin-xyz');
-    expect(onCalls[0].cfg.table).toBe('comments');
+    // After author-only delete shipped, comments now register both INSERT
+    // and DELETE handlers — every change goes back to the parent.
+    expect(onCalls).toHaveLength(2);
+    expect(onCalls.map((c) => c.cfg.event).sort()).toEqual(['DELETE', 'INSERT']);
+    for (const c of onCalls) {
+      expect(c.cfg.filter).toBe('pin_id=eq.pin-xyz');
+      expect(c.cfg.table).toBe('comments');
+    }
 
-    onCalls[0].handler({
+    const insertHandler = onCalls.find((c) => c.cfg.event === 'INSERT')!.handler;
+    insertHandler({
       new: {
         id: 'c1',
         pin_id: 'pin-xyz',
@@ -76,6 +82,11 @@ describe('realtime subscriptions', () => {
     });
     expect(cb).toHaveBeenCalledTimes(1);
     expect(cb.mock.calls[0][0].type).toBe('INSERT');
+
+    const deleteHandler = onCalls.find((c) => c.cfg.event === 'DELETE')!.handler;
+    deleteHandler({ old: { id: 'c1' } });
+    expect(cb).toHaveBeenCalledTimes(2);
+    expect(cb.mock.calls[1][0]).toEqual({ type: 'DELETE', old: { id: 'c1' } });
 
     off();
     expect(removed).toHaveLength(1);

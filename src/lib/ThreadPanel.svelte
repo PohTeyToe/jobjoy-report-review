@@ -3,15 +3,22 @@
   import type { PinStore } from './pin-store.svelte';
   import type { Identity } from './identity';
   import { subscribeCommentsForThread, type CommentRow } from './realtime';
+  import TrashIcon from './TrashIcon.svelte';
 
   type Props = {
     pinId: string | null;
     store: PinStore;
     identity: Identity | null;
     onclose: () => void;
+    /**
+     * Called when the author clicks the trash chip on one of their comments.
+     * The parent route owns the undo toast so this surface stays focused on
+     * thread rendering. Optional — admin surfaces don't pass it (no delete).
+     */
+    ondeletecomment?: (commentId: string) => void;
   };
 
-  const { pinId, store, identity, onclose }: Props = $props();
+  const { pinId, store, identity, onclose, ondeletecomment }: Props = $props();
 
   let containerEl: HTMLDivElement | undefined = $state();
   let textareaEl: HTMLTextAreaElement | undefined = $state();
@@ -45,15 +52,21 @@
       // Note: realtime CommentRow lacks reviewer_name — live-inserted comments
       // from other reviewers show '—' until a page reload triggers the JOIN.
       localUnsub = subscribeCommentsForThread(id, (ev) => {
-        if (ev.type !== 'INSERT') return;
-        const row = ev.new as CommentRow;
-        store.applyRealtimeComment({
-          id: row.id,
-          pin_id: row.pin_id,
-          reviewer_id: row.reviewer_id,
-          body: row.body,
-          created_at: row.created_at
-        });
+        if (ev.type === 'INSERT') {
+          const row = ev.new as CommentRow;
+          store.applyRealtimeComment({
+            id: row.id,
+            pin_id: row.pin_id,
+            reviewer_id: row.reviewer_id,
+            body: row.body,
+            created_at: row.created_at
+          });
+          return;
+        }
+        if (ev.type === 'DELETE') {
+          const id = ev.old.id;
+          if (id) store.applyRealtimeCommentDelete(id);
+        }
       });
     })();
 
@@ -214,15 +227,34 @@
     <div class="flex-1 overflow-y-auto px-4 py-3" data-testid="thread-comments">
       {#if store.activeThread}
         {#each store.activeThread.comments as c (c.id)}
-          <div class="mb-3" data-testid="thread-comment" data-comment-id={c.id}>
-            <div class="flex items-baseline gap-2 text-xs">
-              <span class="font-semibold text-neutral-900">{c.reviewer_name ?? '—'}</span>
-              <span class="text-neutral-500">{fmt(c.created_at)}</span>
-              {#if c.isOptimistic}
-                <span class="text-neutral-400">(sending…)</span>
-              {/if}
+          <div
+            class="group mb-3 flex items-start gap-2"
+            data-testid="thread-comment"
+            data-comment-id={c.id}
+          >
+            <div class="min-w-0 flex-1">
+              <div class="flex items-baseline gap-2 text-xs">
+                <span class="font-semibold text-neutral-900">{c.reviewer_name ?? '—'}</span>
+                <span class="text-neutral-500">{fmt(c.created_at)}</span>
+                {#if c.isOptimistic}
+                  <span class="text-neutral-400">(sending…)</span>
+                {/if}
+              </div>
+              <div class="mt-1 whitespace-pre-wrap text-sm text-neutral-800">{c.body}</div>
             </div>
-            <div class="mt-1 whitespace-pre-wrap text-sm text-neutral-800">{c.body}</div>
+            {#if identity && c.reviewer_id === identity.id && !c.isOptimistic && ondeletecomment}
+              <button
+                type="button"
+                data-testid="thread-comment-delete"
+                data-comment-id={c.id}
+                aria-label="Delete comment"
+                title="Delete comment"
+                class="shrink-0 rounded-md p-1 text-neutral-400 hover:bg-red-50 hover:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+                onclick={() => ondeletecomment?.(c.id)}
+              >
+                <TrashIcon />
+              </button>
+            {/if}
           </div>
         {/each}
         {#if store.activeThread.comments.length === 0}

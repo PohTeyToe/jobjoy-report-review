@@ -16,7 +16,9 @@ export type PinChangeEvent =
   | { type: 'UPDATE'; new: PinRow; old: Partial<PinRow> }
   | { type: 'DELETE'; old: Partial<PinRow> };
 
-export type CommentChangeEvent = { type: 'INSERT'; new: CommentRow };
+export type CommentChangeEvent =
+  | { type: 'INSERT'; new: CommentRow }
+  | { type: 'DELETE'; old: Partial<CommentRow> };
 
 export type PinRow = {
   id: string;
@@ -83,8 +85,10 @@ export function subscribePinsForVariant(
 }
 
 /**
- * Subscribe to new comments on a single thread. INSERT-only because Phase 3
- * doesn't allow comment edits or deletes.
+ * Subscribe to new + deleted comments on a single thread. The delete
+ * channel was added when author-only comment delete shipped — without it,
+ * a deletion in tab A leaves a zombie row in tab B's open thread until
+ * a manual reload.
  */
 export function subscribeCommentsForThread(
   pinId: string,
@@ -103,6 +107,16 @@ export function subscribeCommentsForThread(
         filter: `pin_id=eq.${pinId}`
       },
       (payload: { new: CommentRow }) => onChange({ type: 'INSERT', new: payload.new })
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: 'DELETE',
+        schema: 'design_review',
+        table: 'comments',
+        filter: `pin_id=eq.${pinId}`
+      },
+      (payload: { old: Partial<CommentRow> }) => onChange({ type: 'DELETE', old: payload.old })
     )
     .subscribe((status) => {
       if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
