@@ -129,6 +129,28 @@ body {
   min-height: calc(11in - 1.5in); /* 11in - top/bottom padding */
 }
 
+/* taste-frontend p6 IPP diagram: the upstream variant draws 7 chunky
+   ochre arrowheads pointing inward at the central ESSENTIAL MOTIVATION
+   box. At full size they read as heavy stamps that overpower the
+   restrained editorial tone of the rest of the page. Tone them down
+   visually here without touching upstream variant content: scale each
+   polygon to ~65% of its authored size around its own centroid, and
+   knock fill-opacity down so the ochre reads as a soft pointer rather
+   than a stamp. Stroke also gets the same opacity treatment so the
+   1px outline doesn't visibly remain at full strength after the fill
+   fades. The connector `<line>` elements are untouched — satellites
+   still visibly point inward, they just no longer end with a heavy
+   triangle. `transform-box: fill-box` makes `transform-origin: center`
+   resolve to the polygon's own bounding box rather than the SVG root,
+   so each arrowhead shrinks in place instead of drifting toward (0,0). */
+.page[data-variant-slug='taste-frontend'] .ipp-svg polygon {
+  transform-box: fill-box;
+  transform-origin: center;
+  transform: scale(0.65);
+  fill-opacity: 0.7;
+  stroke-opacity: 0.7;
+}
+
 /* Image safety: a couple of variants set `max-width: none` on figures,
    which can blow past the page edge on narrow viewports. */
 img,
