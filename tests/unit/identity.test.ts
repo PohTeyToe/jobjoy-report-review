@@ -1,23 +1,53 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// Mock the supabase module BEFORE importing the SUT so the singleton client
-// never tries to hit a real network.
-const insertSelectSingle = vi.fn();
-const updateEq = vi.fn();
+/**
+ * Identity layer tests — Supabase Anonymous Auth edition.
+ *
+ * The supabase client is fully stubbed: we control session state, the result
+ * of signInAnonymously, and the result of from('reviewers').{select,upsert,
+ * update}.eq()/maybeSingle()/single(). Identity is no longer backed by
+ * localStorage — these tests verify the auth.uid() lookup + reviewers-row
+ * upsert flow that replaced it.
+ */
+
+// vi.mock is hoisted above all imports; references inside the factory must
+// also be hoisted. vi.hoisted runs before the mock factory and shares the
+// resulting object with the rest of the test module.
+const h = vi.hoisted(() => ({
+  state: { current: null as { user: { id: string } } | null },
+  signInAnon: vi.fn(),
+  upsertSingle: vi.fn(),
+  selectMaybeSingle: vi.fn(),
+  updateEq: vi.fn(),
+  signOut: vi.fn()
+}));
 
 vi.mock('../../src/lib/supabase', () => {
   return {
     supabase: {
-      from: vi.fn((_table: string) => ({
-        insert: vi.fn(() => ({
+      auth: {
+        getSession: vi.fn(async () => ({ data: { session: h.state.current } })),
+        signInAnonymously: h.signInAnon,
+        signOut: h.signOut
+      },
+      from: vi.fn((table: string) => {
+        if (table !== 'reviewers') throw new Error(`unexpected table ${table}`);
+        return {
           select: vi.fn(() => ({
-            single: insertSelectSingle
+            eq: vi.fn(() => ({
+              maybeSingle: h.selectMaybeSingle
+            }))
+          })),
+          upsert: vi.fn(() => ({
+            select: vi.fn(() => ({
+              single: h.upsertSingle
+            }))
+          })),
+          update: vi.fn(() => ({
+            eq: h.updateEq
           }))
-        })),
-        update: vi.fn(() => ({
-          eq: updateEq
-        }))
-      }))
+        };
+      })
     }
   };
 });
@@ -25,61 +55,105 @@ vi.mock('../../src/lib/supabase', () => {
 import {
   getIdentity,
   setIdentity,
+  ensureSession,
   bumpLastSeen,
   __clearIdentityForTests
 } from '../../src/lib/identity';
 
-describe('identity', () => {
-  beforeEach(() => {
-    __clearIdentityForTests();
-    insertSelectSingle.mockReset();
-    updateEq.mockReset();
+describe('identity (anon-auth edition)', () => {
+  beforeEach(async () => {
+    h.state.current = null;
+    h.signInAnon.mockReset();
+    h.upsertSingle.mockReset();
+    h.selectMaybeSingle.mockReset();
+    h.updateEq.mockReset();
+    h.signOut.mockReset();
+    await __clearIdentityForTests();
   });
 
-  it('getIdentity returns null when localStorage is empty', () => {
-    expect(getIdentity()).toBeNull();
+  it('getIdentity returns null when there is no auth session', async () => {
+    expect(await getIdentity()).toBeNull();
   });
 
-  it('setIdentity inserts a reviewer row and persists id+name', async () => {
-    insertSelectSingle.mockResolvedValueOnce({
-      data: { id: 'uuid-123', name: 'Alice' },
+  it('getIdentity returns null when session exists but no reviewer row', async () => {
+    h.state.current = { user: { id: 'auth-uid-1' } };
+    h.selectMaybeSingle.mockResolvedValueOnce({ data: null, error: null });
+    expect(await getIdentity()).toBeNull();
+  });
+
+  it('getIdentity returns the persisted reviewer row when both exist', async () => {
+    h.state.current = { user: { id: 'auth-uid-2' } };
+    h.selectMaybeSingle.mockResolvedValueOnce({
+      data: { id: 'auth-uid-2', name: 'Alice' },
       error: null
     });
+    expect(await getIdentity()).toEqual({ id: 'auth-uid-2', name: 'Alice' });
+  });
 
-    const id = await setIdentity('Alice');
-    expect(id).toEqual({ id: 'uuid-123', name: 'Alice' });
+  it('ensureSession signs in anonymously when no session exists', async () => {
+    h.signInAnon.mockResolvedValueOnce({
+      data: { user: { id: 'new-anon-uid' } },
+      error: null
+    });
+    expect(await ensureSession()).toBe('new-anon-uid');
+    expect(h.signInAnon).toHaveBeenCalledTimes(1);
+  });
 
-    const persisted = getIdentity();
-    expect(persisted).toEqual({ id: 'uuid-123', name: 'Alice' });
+  it('ensureSession reuses an existing session without signing in again', async () => {
+    h.state.current = { user: { id: 'existing-uid' } };
+    expect(await ensureSession()).toBe('existing-uid');
+    expect(h.signInAnon).not.toHaveBeenCalled();
+  });
+
+  it('ensureSession surfaces signInAnonymously errors', async () => {
+    h.signInAnon.mockResolvedValueOnce({
+      data: { user: null },
+      error: { message: 'anon disabled' }
+    });
+    await expect(ensureSession()).rejects.toThrow(/anon disabled/);
   });
 
   it('setIdentity rejects empty names without hitting the network', async () => {
     await expect(setIdentity('   ')).rejects.toThrow(/required/i);
-    expect(insertSelectSingle).not.toHaveBeenCalled();
+    expect(h.signInAnon).not.toHaveBeenCalled();
+    expect(h.upsertSingle).not.toHaveBeenCalled();
   });
 
-  it('setIdentity surfaces supabase errors', async () => {
-    insertSelectSingle.mockResolvedValueOnce({
+  it('setIdentity signs in then upserts a reviewers row keyed by auth.uid()', async () => {
+    h.signInAnon.mockResolvedValueOnce({
+      data: { user: { id: 'fresh-uid' } },
+      error: null
+    });
+    h.upsertSingle.mockResolvedValueOnce({
+      data: { id: 'fresh-uid', name: 'Bob' },
+      error: null
+    });
+    expect(await setIdentity('Bob')).toEqual({ id: 'fresh-uid', name: 'Bob' });
+    expect(h.signInAnon).toHaveBeenCalledTimes(1);
+  });
+
+  it('setIdentity surfaces an upsert RLS error', async () => {
+    h.signInAnon.mockResolvedValueOnce({
+      data: { user: { id: 'rls-uid' } },
+      error: null
+    });
+    h.upsertSingle.mockResolvedValueOnce({
       data: null,
       error: { message: 'rls denied' }
     });
-    await expect(setIdentity('Bob')).rejects.toThrow(/rls denied/);
+    await expect(setIdentity('Carol')).rejects.toThrow(/rls denied/);
   });
 
-  it('bumpLastSeen calls update().eq() when an id is stored', async () => {
-    insertSelectSingle.mockResolvedValueOnce({
-      data: { id: 'uuid-xyz', name: 'Carol' },
-      error: null
-    });
-    await setIdentity('Carol');
-    updateEq.mockResolvedValueOnce({ data: null, error: null });
+  it('bumpLastSeen is a no-op when no session exists', async () => {
     await bumpLastSeen();
-    expect(updateEq).toHaveBeenCalledTimes(1);
-    expect(updateEq).toHaveBeenCalledWith('id', 'uuid-xyz');
+    expect(h.updateEq).not.toHaveBeenCalled();
   });
 
-  it('bumpLastSeen is a no-op when no identity is stored', async () => {
+  it('bumpLastSeen updates the row keyed on the current auth.uid()', async () => {
+    h.state.current = { user: { id: 'live-uid' } };
+    h.updateEq.mockResolvedValueOnce({ data: null, error: null });
     await bumpLastSeen();
-    expect(updateEq).not.toHaveBeenCalled();
+    expect(h.updateEq).toHaveBeenCalledTimes(1);
+    expect(h.updateEq).toHaveBeenCalledWith('id', 'live-uid');
   });
 });

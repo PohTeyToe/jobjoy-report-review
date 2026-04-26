@@ -10,9 +10,10 @@
   import PinComposer from '$lib/PinComposer.svelte';
   import NameModal from '$lib/NameModal.svelte';
   import ThreadPanel from '$lib/ThreadPanel.svelte';
+  import UndoToast from '$lib/UndoToast.svelte';
   import { findClosestPageToCenter, scrollToPageIndex } from '$lib/page-sync';
   import { getIdentity, bumpLastSeen, type Identity } from '$lib/identity';
-  import { createPinStore } from '$lib/pin-store.svelte';
+  import { createPinStore, type Pin, type ThreadComment } from '$lib/pin-store.svelte';
   import { subscribePinsForVariant } from '$lib/realtime';
 
   const SLUGS = VARIANTS.map((v) => v.slug);
@@ -55,6 +56,46 @@
   let shadowRoot = $state<ShadowRoot | null>(null);
   let openPinId = $state<string | null>(null);
   let pinsUnsubscribe: (() => void) | null = null;
+
+  /**
+   * Single-instance undo-toast state. When a delete fires we stash the
+   * snapshot here so the user can restore. A new delete while a toast is
+   * still up commits the previous delete synchronously (calling commitFn)
+   * before replacing it — undo only ever applies to the most recent delete.
+   */
+  type UndoState = {
+    key: number;
+    message: string;
+    onUndo: () => void;
+    onDismiss: () => void;
+  };
+  let undoState = $state<UndoState | null>(null);
+  let undoSeq = 0;
+
+  function showUndo(message: string, onUndo: () => void, onDismiss: () => void): void {
+    // If a previous toast is still up, dismiss it (commits its delete) so
+    // we never accumulate undo state. A noisy delete spree always converges
+    // to "everything earlier is permanent, only the latest is undoable."
+    if (undoState) {
+      undoState.onDismiss();
+    }
+    undoSeq += 1;
+    const myKey = undoSeq;
+    undoState = {
+      key: myKey,
+      message,
+      onUndo: () => {
+        if (undoState?.key !== myKey) return;
+        undoState = null;
+        onUndo();
+      },
+      onDismiss: () => {
+        if (undoState?.key !== myKey) return;
+        undoState = null;
+        onDismiss();
+      }
+    };
+  }
 
   function readPinParam(): string | null {
     return page.url.searchParams.get('pin');
@@ -238,6 +279,69 @@
     pending = null;
   }
 
+  /**
+   * Author-only pin delete with undo. RLS already gates this server-side, so
+   * the visibility check on the trash chip is UI-only — even if a curl
+   * spoofer hides it, the DELETE returns 0 rows and the optimistic removal
+   * rolls back via deletePin().
+   */
+  async function handlePinDelete(pinId: string): Promise<void> {
+    let snapshot: Pin | null = null;
+    try {
+      snapshot = await pinStore.deletePin(pinId);
+    } catch (err) {
+      console.error('[review] delete pin failed:', err);
+      return;
+    }
+    if (!snapshot) return;
+    const pin = snapshot;
+    showUndo(
+      'Pin deleted',
+      () => {
+        void (async () => {
+          try {
+            await pinStore.restorePin(pin);
+          } catch (err) {
+            console.error('[review] restore pin failed:', err);
+          }
+        })();
+      },
+      () => {
+        // Auto-dismiss = permanent. Nothing to do — the row is already gone.
+      }
+    );
+  }
+
+  /**
+   * Author-only comment delete with undo. Mirror of handlePinDelete.
+   */
+  async function handleCommentDelete(commentId: string): Promise<void> {
+    let snapshot: ThreadComment | null = null;
+    try {
+      snapshot = await pinStore.deleteComment(commentId);
+    } catch (err) {
+      console.error('[review] delete comment failed:', err);
+      return;
+    }
+    if (!snapshot) return;
+    const comment = snapshot;
+    showUndo(
+      'Comment deleted',
+      () => {
+        void (async () => {
+          try {
+            await pinStore.restoreComment(comment);
+          } catch (err) {
+            console.error('[review] restore comment failed:', err);
+          }
+        })();
+      },
+      () => {
+        // Permanent.
+      }
+    );
+  }
+
   function onIdentity(next: Identity): void {
     identity = next;
     needsName = false;
@@ -245,14 +349,16 @@
   }
 
   onMount(() => {
-    const existing = getIdentity();
-    if (existing) {
-      identity = existing;
-      void bumpLastSeen();
-      void pinStore.loadPins(variant);
-    } else {
-      needsName = true;
-    }
+    void (async () => {
+      const existing = await getIdentity();
+      if (existing) {
+        identity = existing;
+        void bumpLastSeen();
+        void pinStore.loadPins(variant);
+      } else {
+        needsName = true;
+      }
+    })();
 
     // Deep-link: ?pin=<id> opens the thread on mount.
     const linkedPin = readPinParam();
@@ -338,9 +444,21 @@
     </div>
   {/if}
 
-  <PinOverlay pins={pinStore.pins} {shadowRoot} onopen={openThread} />
+  <PinOverlay
+    pins={pinStore.pins}
+    {shadowRoot}
+    currentReviewerId={identity?.id ?? null}
+    onopen={openThread}
+    ondelete={handlePinDelete}
+  />
 
-  <ThreadPanel pinId={openPinId} store={pinStore} {identity} onclose={closeThread} />
+  <ThreadPanel
+    pinId={openPinId}
+    store={pinStore}
+    {identity}
+    onclose={closeThread}
+    ondeletecomment={handleCommentDelete}
+  />
 
   {#if pending}
     <PinComposer
@@ -353,5 +471,13 @@
 
   {#if needsName}
     <NameModal onidentity={onIdentity} />
+  {/if}
+
+  {#if undoState}
+    <UndoToast
+      message={undoState.message}
+      onUndo={undoState.onUndo}
+      onDismiss={undoState.onDismiss}
+    />
   {/if}
 </main>

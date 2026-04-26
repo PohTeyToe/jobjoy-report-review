@@ -81,7 +81,9 @@
   }
 
   onMount(() => {
-    identity = getIdentity();
+    void (async () => {
+      identity = await getIdentity();
+    })();
     void adminStore.loadAll();
     adminStore.subscribeRealtime();
 

@@ -120,14 +120,16 @@
   }
 
   onMount(() => {
-    const existing = getIdentity();
-    if (existing) {
-      identity = existing;
-      void bumpLastSeen();
-      void store.loadExisting(existing.id);
-    } else {
-      needsName = true;
-    }
+    void (async () => {
+      const existing = await getIdentity();
+      if (existing) {
+        identity = existing;
+        void bumpLastSeen();
+        void store.loadExisting(existing.id);
+      } else {
+        needsName = true;
+      }
+    })();
   });
 </script>
 
