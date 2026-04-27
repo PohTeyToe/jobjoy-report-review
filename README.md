@@ -32,9 +32,20 @@ Copy `.env.example` to `.env.local`. Real values live in Vercel project envs.
 | `PUBLIC_SUPABASE_ANON_KEY` | Anon key (public-safe; RLS enforces access) |
 | `PUBLIC_ADMIN_SECRET`      | URL-secret gate for `/admin/<secret>`       |
 
-## Phases
+## Features
 
-Phase 0 — scaffold. Phases 1-5: variant rendering → identity + pins → threads + realtime → admin dashboard → pick surface. Phase 6 (this PR): pre-George polish — PDF-style document chrome around the variant render, shadow-injected normalization stylesheet, empty/loading/error states on every surface, focus-trap + retry buttons, deep-routes regression spec.
+All planned phases shipped. The app is live at https://jobjoy-report-review.vercel.app/.
+
+- Closed-shadow-DOM variant rendering with cross-variant normalization (`variant-normalize.css`).
+- Click-to-drop pins with threaded comments and realtime sync.
+- **Supabase Anonymous Auth** identity (`auth.signInAnonymously()`) — JWT persisted natively by the Supabase SDK. RLS on every `design_review.*` table enforces author-only writes via `auth.uid() = reviewer_id`.
+- **Author-only delete with 5-second Undo** (trash chip on own pins/comments, single-instance toast).
+- **Cross-author restore RPC** (`design_review.restore_pin_with_comments`) — SECURITY DEFINER, caller-author guarded, restores foreign-author replies under their original `reviewer_id`.
+- `/admin/<secret>` triage dashboard with filters and CSV/markdown export.
+- `/pick` surface for ranking the 6 variants with notes.
+- PDF-style document chrome (`DocumentFrame.svelte`) with sticky title + live "Page X of N".
+
+See `CLAUDE.md` for the migration ledger, gotchas, and architecture details.
 
 ### Document chrome (Phase 6)
 

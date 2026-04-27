@@ -32,5 +32,6 @@ vite.config.ts.timestamp-*
 .tmp-unify/
 .tmp-tf-fix/
 .tmp-delete-feat/
+.tmp-*/
 .playwright-cli/
 verify-polish-screenshots/
