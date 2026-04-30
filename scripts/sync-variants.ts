@@ -10,6 +10,10 @@
  * we fetch + hard-reset to origin/<PIN_REF>. The cache dir is gitignored.
  * Files are read from the cache on disk, not via `git show`, so all downstream
  * transformations operate on a plain working tree.
+ *
+ * Latest upstream landings (for traceability — not load-bearing, sync follows main):
+ *   - 084cafb  fix(impeccable): George's IPP feedback (Smyth->Sample,
+ *              +Motivating Situations as 8th radial element, End Result arrow flipped)
  */
 
 import { execFileSync } from 'node:child_process';
