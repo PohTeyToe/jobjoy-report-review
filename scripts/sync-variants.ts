@@ -14,6 +14,9 @@
  * Latest upstream landings (for traceability — not load-bearing, sync follows main):
  *   - 084cafb  fix(impeccable): George's IPP feedback (Smyth->Sample,
  *              +Motivating Situations as 8th radial element, End Result arrow flipped)
+ *   - 500e376  fix(impeccable): George's remaining pin feedback (Colophon delete,
+ *              TOC trim I/II/III, how-page wording, PS kicker plain, +Definitions
+ *              + Career Options pages, folio cascade Sample 02-12)
  */
 
 import { execFileSync } from 'node:child_process';
