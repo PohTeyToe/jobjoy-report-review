@@ -17,6 +17,9 @@
  *   - 500e376  fix(impeccable): George's remaining pin feedback (Colophon delete,
  *              TOC trim I/II/III, how-page wording, PS kicker plain, +Definitions
  *              + Career Options pages, folio cascade Sample 02-12)
+ *   - 3d78725  fix(impeccable): round-2 critic fixes (how-page truncation CSS,
+ *              def-list `(N) Name` spacing, ledger texture, IPP slug dedup,
+ *              TOC "Your", PS subhead "and", body type bump to 11.5/17pt)
  */
 
 import { execFileSync } from 'node:child_process';
